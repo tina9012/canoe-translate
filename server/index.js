@@ -34,7 +34,7 @@ io.on('connection', (socket) => {
     }
 
     const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, serviceRegion);
-    speechConfig.speechRecognitionLanguage = 'en-US'; // Source language
+    speechConfig.speechRecognitionLanguage = 'fr-CA'; // Source language
     speechConfig.addTargetLanguage(targetLanguage); // Target language
 
     const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();

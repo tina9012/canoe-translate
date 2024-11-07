@@ -6,7 +6,7 @@ import {
     TextAnalyticsClient,
     AzureKeyCredential,
 } from "@azure/ai-text-analytics";
-import { Headphones, Download, Trash2, Plus, X } from "lucide-react";
+import { Headphones, Download, Trash2, Plus, X, Check } from "lucide-react";
 import "@fontsource/roboto/300.css"; // Roboto Light font
 import ReactCountryFlag from "react-country-flag"; // For displaying country flags
 import logo from "./assets/logo.png"; // Ensure you have a logo in src/assets/
@@ -14,6 +14,7 @@ import contactImage from "./assets/contact.png"; // Ensure you have contact.png 
 import { AudioVisualizer } from "./components/AudioVisualizer";
 import { motion } from "framer-motion";
 import { Mic, MicOff } from "lucide-react";
+import { debounce } from "lodash";
 
 // Access environment variables via import.meta.env for Vite
 const speechKey = import.meta.env.VITE_SPEECH_KEY?.trim() || "";
@@ -53,6 +54,22 @@ const getCountryCode = (languageCode: string) => {
     return countryMap[languageCode] || "US"; // Default to "US" if not found
 };
 
+// Predefined Scientific Terms per Language
+const predefinedScientificTerms: { [key: string]: string[] } = {
+    en: ["quantum mechanics", "neuroscience", "photosynthesis"],
+    fr: ["mécanique quantique", "neurosciences", "photosynthèse"],
+    es: ["mecánica cuántica", "neurociencias", "fotosíntesis"],
+    // Add more languages and terms as needed
+};
+
+// Define Phrase Lists per Language (initially empty, users can add)
+const initialPhraseLists: { [key: string]: string[] } = {
+    en: [],
+    fr: [],
+    es: [],
+    // Add more languages as needed
+};
+
 function App() {
     // State variables
     const [transcription, setTranscription] = useState("");
@@ -60,6 +77,7 @@ function App() {
     const [detectedLanguage, setDetectedLanguage] = useState("");
     const [isRecognizing, setIsRecognizing] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
     // State for accumulated session transcription
     const [sessionTranscription, setSessionTranscription] =
@@ -89,7 +107,7 @@ function App() {
         // Add more languages as desired
     ];
 
-    const [targetLanguage, setTargetLanguage] = useState<string>("fr"); // Default to English
+    const [targetLanguage, setTargetLanguage] = useState<string>("fr"); // Default to French
 
     // State for audio input devices
     const [audioInputDevices, setAudioInputDevices] = useState<
@@ -98,9 +116,11 @@ function App() {
     const [selectedAudioInputDevice, setSelectedAudioInputDevice] =
         useState<string>("");
 
-    // State for phrase list
+    // State for phrase list: language-specific
     const [phraseInput, setPhraseInput] = useState<string>(""); // Current input field
-    const [phraseList, setPhraseList] = useState<string[]>([]); // List of phrases
+    const [phraseList, setPhraseList] = useState<{ [key: string]: string[] }>(
+        initialPhraseLists
+    ); // List of phrases per language
 
     // State for audio playback speed
     const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.5); // Default speed 1.5
@@ -114,6 +134,13 @@ function App() {
     const synthRef = useRef<SpeechSDK.SpeechSynthesizer | null>(null);
     const textAnalyticsClient = useRef<TextAnalyticsClient | null>(null);
     const stopInProgressRef = useRef(false);
+
+    // Debounced function to apply phrases to recognizer
+    const debouncedApplyPhrases = useRef(
+        debounce((recognizer: SpeechSDK.SpeechRecognizer | SpeechSDK.TranslationRecognizer) => {
+            addPhrasesToRecognizer(recognizer);
+        }, 500)
+    ).current;
 
     // Initialize Text Analytics Client
     useEffect(() => {
@@ -195,6 +222,20 @@ function App() {
         enumerateDevices();
     }, []); // Run once on mount
 
+    // Load phrase lists from local storage on mount
+    useEffect(() => {
+        const savedPhrases = localStorage.getItem("phraseList");
+        if (savedPhrases) {
+            setPhraseList(JSON.parse(savedPhrases));
+            console.log("Phrase lists loaded from local storage.");
+        }
+    }, []);
+
+    // Save phrase lists to local storage whenever they change
+    useEffect(() => {
+        localStorage.setItem("phraseList", JSON.stringify(phraseList));
+    }, [phraseList]);
+
     // Cleanup on component unmount
     useEffect(() => {
         return () => {
@@ -256,6 +297,90 @@ function App() {
         });
     };
 
+    // Validate Phrase Function
+    const isValidPhrase = (phrase: string): boolean => {
+        // Allow letters, numbers, spaces, and common punctuation
+        const regex = /^[\p{L}\p{N}\s.,'-]+$/u;
+        return regex.test(phrase);
+    };
+
+    // Normalize Phrase Function
+    const normalizePhrase = (phrase: string): string => {
+        return phrase.normalize("NFC"); // Normalize to Unicode NFC form
+    };
+
+    // Handle Add Phrase
+    const handleAddPhrase = () => {
+        const trimmedPhrase = normalizePhrase(phraseInput.trim());
+        if (
+            trimmedPhrase &&
+            isValidPhrase(trimmedPhrase) &&
+            !phraseList[targetLanguage].includes(trimmedPhrase)
+        ) {
+            setPhraseList({
+                ...phraseList,
+                [targetLanguage]: [...phraseList[targetLanguage], trimmedPhrase],
+            });
+            setPhraseInput("");
+            setSuccessMessage("Phrase added successfully!");
+            console.log(`[${targetLanguage}] Phrase added: "${trimmedPhrase}"`);
+            // Clear success message after 3 seconds
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } else {
+            setError(
+                "Invalid or duplicate phrase. Please ensure it contains valid characters and is unique."
+            );
+        }
+    };
+
+    // Handle Add Predefined Phrase
+    const handleAddPredefinedPhrase = (phrase: string) => {
+        if (!phraseList[targetLanguage].includes(phrase)) {
+            setPhraseList({
+                ...phraseList,
+                [targetLanguage]: [...phraseList[targetLanguage], phrase],
+            });
+            setSuccessMessage("Predefined phrase added successfully!");
+            console.log(`[${targetLanguage}] Predefined phrase added: "${phrase}"`);
+            // Clear success message after 3 seconds
+            setTimeout(() => setSuccessMessage(null), 3000);
+        }
+    };
+
+    // Handle Remove Phrase
+    const handleRemovePhrase = (phrase: string) => {
+        setPhraseList({
+            ...phraseList,
+            [targetLanguage]: phraseList[targetLanguage].filter((p) => p !== phrase),
+        });
+        setSuccessMessage("Phrase removed successfully!");
+        console.log(`[${targetLanguage}] Phrase removed: "${phrase}"`);
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccessMessage(null), 3000);
+    };
+
+    // Handle Clear Phrases
+    const handleClearPhrases = () => {
+        setPhraseList({
+            ...phraseList,
+            [targetLanguage]: [],
+        });
+        setSuccessMessage("All phrases cleared.");
+        console.log(`All phrases cleared for ${targetLanguage}.`);
+        // Clear success message after 3 seconds
+        setTimeout(() => setSuccessMessage(null), 3000);
+    };
+
+    // Handle Phrase Input Key Down (Enter key)
+    const handlePhraseInputKeyDown = (
+        e: React.KeyboardEvent<HTMLInputElement>
+    ) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            handleAddPhrase();
+        }
+    };
+
     // Function to add phrases to recognizer using PhraseListGrammar
     const addPhrasesToRecognizer = (
         recognizer: SpeechSDK.SpeechRecognizer | SpeechSDK.TranslationRecognizer
@@ -263,8 +388,10 @@ function App() {
         try {
             const phraseListConstraint =
                 SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
-            if (phraseList.length > 0) {
-                const allStrings = phraseList.every(
+            const currentPhrases = phraseList[targetLanguage];
+
+            if (currentPhrases.length > 0) {
+                const allStrings = currentPhrases.every(
                     (phrase) =>
                         typeof phrase === "string" && phrase.trim().length > 0
                 );
@@ -273,18 +400,16 @@ function App() {
                     return false;
                 }
 
-                phraseList.forEach((phrase) => {
-                    console.log("Adding phrase:", phrase);
+                currentPhrases.forEach((phrase) => {
+                    console.log(`[${targetLanguage}] Adding phrase: "${phrase}"`);
                     phraseListConstraint.addPhrase(phrase);
                 });
-                console.log("All phrases added successfully.");
+                console.log(`[${targetLanguage}] All phrases added successfully.`);
             }
             return true;
         } catch (error) {
-            console.error("Error adding phrases to recognizer:", error);
-            setError(
-                `Error adding phrases to phrase list: ${error.message || error}`
-            );
+            console.error(`[${targetLanguage}] Error adding phrases to recognizer:`, error);
+            setError(`Error adding phrases to phrase list: ${error.message || error}`);
             return false;
         }
     };
@@ -328,7 +453,7 @@ function App() {
                 speechKey,
                 serviceRegion
             );
-            speechConfig.speechRecognitionLanguage = "en-US"; // Temporary language for initial detection
+            speechConfig.speechRecognitionLanguage = "fr-CA"; // Default to French initially
             speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Allow profanity
 
             console.log("SpeechConfig initialized:", speechConfig);
@@ -349,7 +474,7 @@ function App() {
             );
             console.log("SpeechRecognizer created:", recognizer);
 
-            // Add phrases to recognizer
+            // Add phrases specific to the current language
             const phrasesAdded = addPhrasesToRecognizer(recognizer);
             if (!phrasesAdded) {
                 recognizer.close();
@@ -361,14 +486,14 @@ function App() {
 
             // Set up event handlers
             recognizer.recognized = async (s, e) => {
-                console.log("Recognizer recognized event triggered.");
+                console.log(`[${targetLanguage}] Recognizer recognized event triggered.`);
                 if (
                     e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech
                 ) {
                     const text = e.result.text;
                     setTranscription(text);
                     appendOrReplaceSessionTranscription(text); // Use helper function
-                    console.log(`Transcription: ${text}`);
+                    console.log(`[${targetLanguage}] Transcription: ${text}`);
 
                     // Detect language using Text Analytics
                     const detectedLang = await detectLanguage(text);
@@ -377,7 +502,7 @@ function App() {
                         supportedInputLanguages.includes(detectedLang)
                     ) {
                         setDetectedLanguage(detectedLang);
-                        console.log(`Detected Language: ${detectedLang}`);
+                        console.log(`[${targetLanguage}] Detected Language: ${detectedLang}`);
 
                         // Stop initial recognizer
                         await stopRecognition();
@@ -385,15 +510,15 @@ function App() {
                         // Start translation recognizer with detected language
                         startTranslation(detectedLang);
                     } else {
-                        console.error("Detected language is not supported.");
+                        console.error(`[${targetLanguage}] Detected language is not supported.`);
                         setError(
-                            "Detected language is not supported. Please speak in English, French, Spanish, or Italian."
+                            "Detected language is not supported. Please speak in English, French, or Spanish."
                         );
                         stopRecognition();
                     }
                 } else {
                     console.warn(
-                        "Speech not recognized. Reason:",
+                        `[${targetLanguage}] Speech not recognized. Reason:`,
                         e.result.reason
                     );
                 }
@@ -401,17 +526,17 @@ function App() {
 
             recognizer.recognizing = (s, e) => {
                 // Optional: You can handle intermediate results here if desired
-                console.log(`Recognizing: ${e.result.text}`);
+                console.log(`[${targetLanguage}] Recognizing: ${e.result.text}`);
             };
 
             recognizer.canceled = (s, e) => {
-                console.error("Recognition canceled:", e.errorDetails);
+                console.error(`[${targetLanguage}] Recognition canceled:`, e.errorDetails);
                 setError(`Recognition canceled: ${e.errorDetails}`);
                 stopRecognition();
             };
 
             recognizer.sessionStopped = () => {
-                console.log("Session stopped");
+                console.log(`[${targetLanguage}] Session stopped`);
                 stopRecognition();
             };
 
@@ -437,36 +562,41 @@ function App() {
     // Detect Language Function
     const detectLanguage = async (text: string): Promise<string | null> => {
         try {
-            console.log("Detecting language for text:", text);
+            console.log(`[${targetLanguage}] Detecting language for text:`, text);
 
-            // Specify the country hint for languages we support
-            const countryHint = "CA"; // Default to Canada for French (CA)
+            // Specify the country hint based on language
+            const countryHintMap: { [key: string]: string } = {
+                en: "US",
+                fr: "FR",
+                es: "ES",
+            };
+            const countryHint = countryHintMap[targetLanguage] || "US";
 
-            // Detect language with a fixed country hint
+            // Detect language with a country hint
             const results = await textAnalyticsClient.current!.detectLanguage([
                 { id: "1", text, countryHint },
             ]);
 
             const result = results[0];
             if (result.error) {
-                console.error("Language detection error:", result.error);
+                console.error(`[${targetLanguage}] Language detection error:`, result.error);
                 setError("Language detection failed.");
                 return null;
             }
 
             const detectedLanguage = result.primaryLanguage.iso6391Name;
-            console.log("Detected language:", detectedLanguage);
+            console.log(`[${targetLanguage}] Detected language:`, detectedLanguage);
 
             // Check if the detected language is one of our supported languages
-            if (["fr", "es", "en"].includes(detectedLanguage)) {
+            if (supportedInputLanguages.includes(detectedLanguage)) {
                 return detectedLanguage;
             } else {
-                console.warn("Detected language is not supported.");
+                console.warn(`[${targetLanguage}] Detected language is not supported.`);
                 setError("Detected language is not supported.");
                 return null;
             }
         } catch (error) {
-            console.error("Error during language detection:", error);
+            console.error(`[${targetLanguage}] Error during language detection:`, error);
             setError("Error during language detection.");
             return null;
         }
@@ -494,7 +624,7 @@ function App() {
             // Add more mappings as needed
         };
 
-        const mappedSourceLanguage = languageMap[sourceLanguage] || "en-US";
+        const mappedSourceLanguage = languageMap[sourceLanguage] || "fr-CA";
 
         try {
             console.log("Initializing SpeechTranslationConfig.");
@@ -525,7 +655,7 @@ function App() {
             );
             console.log("TranslationRecognizer created:", recognizer);
 
-            // Add phrases to recognizer
+            // Add phrases specific to the current language
             const phrasesAdded = addPhrasesToRecognizer(recognizer);
             if (!phrasesAdded) {
                 recognizer.close();
@@ -546,13 +676,13 @@ function App() {
                     `Translation: ${translationText}`
                 ); // Use helper function
                 console.log(
-                    `Recognizing: ${text} | Translation: ${translationText}`
+                    `[${targetLanguage}] Recognizing: ${text} | Translation: ${translationText}`
                 );
             };
 
             recognizer.recognized = (s, e) => {
                 console.log(
-                    "Translation recognizer recognized event triggered."
+                    `[${targetLanguage}] Translation recognizer recognized event triggered.`
                 );
                 if (
                     e.result.reason === SpeechSDK.ResultReason.TranslatedSpeech
@@ -565,11 +695,11 @@ function App() {
                     appendOrReplaceSessionTranscription(
                         `Translation: ${translationText}`
                     ); // Use helper function
-                    console.log(`Translated Speech: ${translationText}`);
+                    console.log(`[${targetLanguage}] Translated Speech: ${translationText}`);
                     synthesizeSpeech(translationText);
                 } else {
                     console.warn(
-                        "Translation not recognized. Reason:",
+                        `[${targetLanguage}] Translation not recognized. Reason:`,
                         e.result.reason
                     );
                 }
@@ -577,7 +707,7 @@ function App() {
 
             recognizer.canceled = (s, e) => {
                 console.error(
-                    "Translation recognition canceled:",
+                    `[${targetLanguage}] Translation recognition canceled:`,
                     e.errorDetails
                 );
                 setError(`Translation canceled: ${e.errorDetails}`);
@@ -585,7 +715,7 @@ function App() {
             };
 
             recognizer.sessionStopped = () => {
-                console.log("Translation recognition session stopped");
+                console.log(`[${targetLanguage}] Translation recognition session stopped`);
                 stopRecognition();
             };
 
@@ -877,35 +1007,6 @@ function App() {
         }
     };
 
-    // Handlers for Phrase List
-    const handleAddPhrase = () => {
-        const trimmedPhrase = phraseInput.trim();
-        if (trimmedPhrase && !phraseList.includes(trimmedPhrase)) {
-            setPhraseList([...phraseList, trimmedPhrase]);
-            setPhraseInput("");
-            console.log(`Phrase added: ${trimmedPhrase}`);
-        }
-    };
-
-    const handleRemovePhrase = (phrase: string) => {
-        setPhraseList(phraseList.filter((p) => p !== phrase));
-        console.log(`Phrase removed: ${phrase}`);
-    };
-
-    const handleClearPhrases = () => {
-        setPhraseList([]);
-        console.log("All phrases cleared.");
-    };
-
-    const handlePhraseInputKeyDown = (
-        e: React.KeyboardEvent<HTMLInputElement>
-    ) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            handleAddPhrase();
-        }
-    };
-
     // Download Session Transcription Function
     const downloadSessionTranscription = () => {
         if (!sessionTranscription) {
@@ -952,6 +1053,11 @@ function App() {
                     {/* Illustrative Image */}
                     <div className="mt-8">
                         {/* Ensure you have 'contact.png' in src/assets/ */}
+                        <img
+                            src={contactImage}
+                            alt="Contact Us"
+                            className="mx-auto h-40 w-auto"
+                        />
                     </div>
                 </div>
 
@@ -960,6 +1066,14 @@ function App() {
                     <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg shadow flex items-center animate-fadeIn">
                         <X className="w-6 h-6 mr-2" />
                         <span>{error}</span>
+                    </div>
+                )}
+
+                {/* Success Message */}
+                {successMessage && (
+                    <div className="mb-6 p-4 bg-green-100 text-green-700 rounded-lg shadow flex items-center animate-fadeIn">
+                        <Check className="w-6 h-6 mr-2" />
+                        <span>{successMessage}</span>
                     </div>
                 )}
 
@@ -1036,7 +1150,7 @@ function App() {
                 {/* Phrase List Section */}
                 <div className="mb-8">
                     <h2 className="text-2xl md:text-3xl font-semibold text-[#817F75] mb-4 text-center">
-                        Enhance Recognition with Phrase List
+                        Enhance Recognition with Phrase List ({targetLanguage.toUpperCase()})
                     </h2>
                     <div className="flex flex-col md:flex-row items-start justify-center md:items-center gap-2">
                         <input
@@ -1057,25 +1171,41 @@ function App() {
                         <button
                             onClick={handleClearPhrases}
                             className={`flex items-center px-3 py-2 bg-[#817F75] text-white rounded-full hover:bg-[#6E6E6E] transition duration-200 focus:outline-none shadow-sm text-sm ${
-                                phraseList.length === 0
+                                phraseList[targetLanguage].length === 0
                                     ? "opacity-50 cursor-not-allowed"
                                     : ""
                             }`}
-                            disabled={phraseList.length === 0}
+                            disabled={phraseList[targetLanguage].length === 0}
                             aria-label="Clear Phrases"
                         >
                             <Trash2 className="w-4 h-4" />
                         </button>
                     </div>
-                    {/* Display Phrase List */}
-                    {phraseList.length > 0 && (
+                    {/* Predefined Scientific Terms */}
+                    <div className="mt-4">
+                        <h3 className="text-lg font-medium text-[#817F75] mb-2">Predefined Scientific Terms:</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {predefinedScientificTerms[targetLanguage].map((term, index) => (
+                                <button
+                                    key={index}
+                                    onClick={() => handleAddPredefinedPhrase(term)}
+                                    className="px-3 py-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition duration-200 text-sm"
+                                    aria-label={`Add predefined phrase ${term}`}
+                                >
+                                    {term}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    {/* Display Current Language's Phrase List */}
+                    {phraseList[targetLanguage].length > 0 && (
                         <div className="mt-4">
                             <h3 className="text-lg font-medium text-[#817F75] mb-2">
                                 Current Phrases:
                             </h3>
                             <div className="h-24 overflow-y-auto p-2 bg-[#F5F5F5] border border-[#C5D9E2] rounded-md shadow-inner">
                                 <ul className="space-y-1">
-                                    {phraseList.map((phrase, index) => (
+                                    {phraseList[targetLanguage].map((phrase, index) => (
                                         <li
                                             key={index}
                                             className="flex items-center justify-between"
@@ -1202,7 +1332,7 @@ function App() {
                         <div className="mt-4 text-center">
                             <button
                                 onClick={downloadSessionTranscription}
-                                className={`flex items-center justify-center px-6 py-3 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-lg transform hover:scale-105 transition-transform ${
+                                className={`flex items-center justify-center px-6 py-3 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-lg transform hover:scale-105 ${
                                     !sessionTranscription
                                         ? "bg-purple-300 cursor-not-allowed"
                                         : ""
