@@ -1,11 +1,13 @@
-// src/App.tsx 
+// src/App.tsx
 
 import React, { useState, useRef, useEffect } from 'react';
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
 import { TextAnalyticsClient, AzureKeyCredential } from "@azure/ai-text-analytics";
 import { Headphones, Download, Trash2, Plus, X } from 'lucide-react';
-import '@fontsource/roboto/300.css';  // Example for Roboto Light font
-import ReactCountryFlag from "react-country-flag"; // Alternative to react-flag-icon-css
+import '@fontsource/roboto/300.css';  // Roboto Light font
+import ReactCountryFlag from "react-country-flag"; // For displaying country flags
+import logo from './assets/logo.png'; // Ensure you have a logo in src/assets/
+import contactImage from './assets/contact.png'; // Ensure you have contact.png in src/assets/
 
 // Access environment variables via import.meta.env for Vite
 const speechKey = import.meta.env.VITE_SPEECH_KEY?.trim() || '';
@@ -24,24 +26,45 @@ interface TargetLanguageOption {
   name: string;
 }
 
+// Function to map language codes to country codes for flags
+const getCountryCode = (languageCode: string) => {
+  const countryMap: { [key: string]: string } = {
+    en: "US", // English - United States
+    fr: "FR",
+    es: "ES",
+    de: "DE",
+    it: "IT",
+    zh: "CN",
+    ja: "JP",
+    ko: "KR",
+    ar: "SA",
+    pt: "PT",
+    ru: "RU",
+    la: "VA", // Latin: mapped to Vatican City as an example
+  };
+  return countryMap[languageCode] || "US"; // Default to "US" if not found
+};
+
 function App() {
+  // State variables
   const [transcription, setTranscription] = useState('');
   const [translation, setTranslation] = useState('');
   const [detectedLanguage, setDetectedLanguage] = useState('');
   const [isRecognizing, setIsRecognizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // New state for accumulated session transcription
-  const [sessionTranscription, setSessionTranscription] = useState<string>(''); // **New**
+  // State for accumulated session transcription
+  const [sessionTranscription, setSessionTranscription] = useState<string>('');
 
   // State to control visibility of transcription sections
-  const [showTranscriptionSections, setShowTranscriptionSections] = useState<boolean>(false); // **New**
+  const [showTranscriptionSections, setShowTranscriptionSections] = useState<boolean>(false);
 
   // Define supported input languages
-  const supportedInputLanguages = ['en', 'fr', 'es', 'it'];
+  const supportedInputLanguages = ['en', 'fr', 'es'];
 
-  // Define target languages
+  // Define target languages (English added as the first option)
   const targetLanguages: TargetLanguageOption[] = [
+    { code: 'en', name: 'English' }, // English added first
     { code: 'fr', name: 'French' },
     { code: 'es', name: 'Spanish' },
     { code: 'de', name: 'German' },
@@ -56,7 +79,7 @@ function App() {
     // Add more languages as desired
   ];
 
-  const [targetLanguage, setTargetLanguage] = useState<string>('fr'); // Default to French
+  const [targetLanguage, setTargetLanguage] = useState<string>('fr'); // Default to English
 
   // State for audio input devices
   const [audioInputDevices, setAudioInputDevices] = useState<AudioInputDevice[]>([]);
@@ -66,6 +89,10 @@ function App() {
   const [phraseInput, setPhraseInput] = useState<string>(''); // Current input field
   const [phraseList, setPhraseList] = useState<string[]>([]); // List of phrases
 
+  // State for audio playback speed
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.5); // Default speed 1.5
+
+  // Refs for recognizers and synthesizer
   const initialRecognizerRef = useRef<SpeechSDK.SpeechRecognizer | null>(null);
   const translationRecognizerRef = useRef<SpeechSDK.TranslationRecognizer | null>(null);
   const synthRef = useRef<SpeechSDK.SpeechSynthesizer | null>(null);
@@ -128,7 +155,7 @@ function App() {
     };
 
     enumerateDevices();
-  }, []); // Fixed dependency array to run only once on mount
+  }, []); // Run once on mount
 
   // Cleanup on component unmount
   useEffect(() => {
@@ -159,7 +186,7 @@ function App() {
     };
   }, []);
 
-  // **Updated Helper Function**
+  // Helper function to append or replace session transcription
   const appendOrReplaceSessionTranscription = (newText: string) => {
     setSessionTranscription(prev => {
       const lines = prev.split('\n');
@@ -179,6 +206,32 @@ function App() {
     });
   };
 
+  // Function to add phrases to recognizer using PhraseListGrammar
+  const addPhrasesToRecognizer = (recognizer: SpeechSDK.SpeechRecognizer | SpeechSDK.TranslationRecognizer): boolean => {
+    try {
+      const phraseListConstraint = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
+      if (phraseList.length > 0) {
+        const allStrings = phraseList.every(phrase => typeof phrase === 'string' && phrase.trim().length > 0);
+        if (!allStrings) {
+          setError('Phrase list contains invalid entries.');
+          return false;
+        }
+
+        phraseList.forEach(phrase => {
+          console.log('Adding phrase:', phrase);
+          phraseListConstraint.addPhrase(phrase);
+        });
+        console.log('All phrases added successfully.');
+      }
+      return true;
+    } catch (error) {
+      console.error('Error adding phrases to recognizer:', error);
+      setError(`Error adding phrases to phrase list: ${error.message || error}`);
+      return false;
+    }
+  };
+
+  // Start Recognition Function
   const startRecognition = async () => {
     console.log('Start Recognition button clicked.');
 
@@ -208,14 +261,14 @@ function App() {
     setSessionTranscription(''); // Reset session transcription on new recognition
     setError(null);
     setIsRecognizing(true);
-    setShowTranscriptionSections(true); // **Show transcription sections upon starting**
+    setShowTranscriptionSections(true); // Show transcription sections upon starting
 
     try {
       // Initialize Speech Config for initial transcription
       console.log('Initializing SpeechConfig with key and region.');
       const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, serviceRegion);
       speechConfig.speechRecognitionLanguage = 'en-US'; // Temporary language for initial detection
-      speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // **Allow profanity**
+      speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Allow profanity
 
       console.log('SpeechConfig initialized:', speechConfig);
 
@@ -230,40 +283,15 @@ function App() {
       const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
       console.log('SpeechRecognizer created:', recognizer);
 
-      initialRecognizerRef.current = recognizer;
-
-      // Instantiate PhraseListGrammar using fromRecognizer
-      console.log('Creating PhraseListGrammar using fromRecognizer.');
-      const phraseListConstraint = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
-      console.log('PhraseListGrammar created:', phraseListConstraint);
-
-      // Add phrases to the PhraseListGrammar
-      if (phraseList.length > 0) {
-        const allStrings = phraseList.every(phrase => typeof phrase === 'string');
-        if (!allStrings) {
-          setError('Phrase list contains non-string items.');
-          setIsRecognizing(false);
-          return;
-        }
-
-        try {
-          console.log('Adding phrases to PhraseListGrammar.');
-          phraseList.forEach(phrase => {
-            console.log('Adding phrase:', phrase);
-            phraseListConstraint.addPhrase(phrase);
-          });
-          console.log('Phrases added successfully.');
-
-          // **Removed the incorrect method call**
-          // recognizer.addGrammar(phraseListConstraint);
-          // console.log('PhraseListConstraint added to SpeechRecognizer.');
-        } catch (error) {
-          console.error('Error adding phrases:', error);
-          setError('Error adding phrases to phrase list.');
-          stopRecognition();
-          return;
-        }
+      // Add phrases to recognizer
+      const phrasesAdded = addPhrasesToRecognizer(recognizer);
+      if (!phrasesAdded) {
+        recognizer.close();
+        setIsRecognizing(false);
+        return;
       }
+
+      initialRecognizerRef.current = recognizer;
 
       // Set up event handlers
       recognizer.recognized = async (s, e) => {
@@ -271,7 +299,7 @@ function App() {
         if (e.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
           const text = e.result.text;
           setTranscription(text);
-          appendOrReplaceSessionTranscription(text); // **Use helper function**
+          appendOrReplaceSessionTranscription(text); // Use helper function
           console.log(`Transcription: ${text}`);
 
           // Detect language using Text Analytics
@@ -293,6 +321,11 @@ function App() {
         } else {
           console.warn('Speech not recognized. Reason:', e.result.reason);
         }
+      };
+
+      recognizer.recognizing = (s, e) => {
+        // Optional: You can handle intermediate results here if desired
+        console.log(`Recognizing: ${e.result.text}`);
       };
 
       recognizer.canceled = (s, e) => {
@@ -325,25 +358,46 @@ function App() {
     }
   };
 
+  // Detect Language Function
   const detectLanguage = async (text: string): Promise<string | null> => {
     try {
       console.log('Detecting language for text:', text);
-      const results = await textAnalyticsClient.current!.detectLanguage([text]);
+  
+      // Specify the country hint for languages we support
+      const countryHint = "CA"; // Default to Canada for French (CA)
+  
+      // Detect language with a fixed country hint
+      const results = await textAnalyticsClient.current!.detectLanguage(
+        [{ id: "1", text, countryHint }]
+      );
+  
       const result = results[0];
       if (result.error) {
         console.error("Language detection error:", result.error);
         setError('Language detection failed.');
         return null;
       }
-      console.log('Detected language:', result.primaryLanguage.iso6391Name);
-      return result.primaryLanguage.iso6391Name; // e.g., 'en', 'es', 'fr', 'it'
+  
+      const detectedLanguage = result.primaryLanguage.iso6391Name;
+      console.log('Detected language:', detectedLanguage);
+  
+      // Check if the detected language is one of our supported languages
+      if (["fr", "es", "en"].includes(detectedLanguage)) {
+        return detectedLanguage;
+      } else {
+        console.warn('Detected language is not supported.');
+        setError('Detected language is not supported.');
+        return null;
+      }
     } catch (error) {
       console.error("Error during language detection:", error);
       setError('Error during language detection.');
       return null;
     }
   };
+  
 
+  // Start Translation Function
   const startTranslation = async (sourceLanguage: string) => {
     console.log(`Starting translation for source language: ${sourceLanguage}`);
     setIsRecognizing(true); // Ensure isRecognizing remains true
@@ -370,7 +424,7 @@ function App() {
       const speechConfig = SpeechSDK.SpeechTranslationConfig.fromSubscription(speechKey, serviceRegion);
       speechConfig.speechRecognitionLanguage = mappedSourceLanguage;
       speechConfig.addTargetLanguage(targetLanguage);
-      speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // **Allow profanity in translation**
+      speechConfig.setProfanity(SpeechSDK.ProfanityOption.Raw); // Allow profanity in translation
 
       console.log('SpeechTranslationConfig initialized:', speechConfig);
 
@@ -385,40 +439,15 @@ function App() {
       const recognizer = new SpeechSDK.TranslationRecognizer(speechConfig, audioConfig);
       console.log('TranslationRecognizer created:', recognizer);
 
-      translationRecognizerRef.current = recognizer;
-
-      // Instantiate PhraseListGrammar using fromRecognizer
-      console.log('Creating PhraseListGrammar using fromRecognizer for TranslationRecognizer.');
-      const phraseListConstraint = SpeechSDK.PhraseListGrammar.fromRecognizer(recognizer);
-      console.log('PhraseListGrammar created for TranslationRecognizer:', phraseListConstraint);
-
-      // Add phrases to the PhraseListGrammar
-      if (phraseList.length > 0) {
-        const allStrings = phraseList.every(phrase => typeof phrase === 'string');
-        if (!allStrings) {
-          setError('Phrase list contains non-string items.');
-          setIsRecognizing(false);
-          return;
-        }
-
-        try {
-          console.log('Adding phrases to PhraseListGrammar for TranslationRecognizer.');
-          phraseList.forEach(phrase => {
-            console.log('Adding phrase:', phrase);
-            phraseListConstraint.addPhrase(phrase);
-          });
-          console.log('Phrases added successfully to TranslationRecognizer.');
-
-          // **Removed the incorrect method call**
-          // recognizer.addGrammar(phraseListConstraint);
-          // console.log('PhraseListConstraint added to SpeechTranslationConfig.');
-        } catch (error) {
-          console.error('Error adding phrases to TranslationRecognizer:', error);
-          setError('Error adding phrases to phrase list.');
-          stopRecognition();
-          return;
-        }
+      // Add phrases to recognizer
+      const phrasesAdded = addPhrasesToRecognizer(recognizer);
+      if (!phrasesAdded) {
+        recognizer.close();
+        setIsRecognizing(false);
+        return;
       }
+
+      translationRecognizerRef.current = recognizer;
 
       // Set up event handlers
       recognizer.recognizing = (s, e) => {
@@ -426,7 +455,7 @@ function App() {
         const translationText = e.result.translations.get(targetLanguage) || '';
         setTranscription(text);
         setTranslation(translationText);
-        appendOrReplaceSessionTranscription(`Translation: ${translationText}`); // **Use helper function**
+        appendOrReplaceSessionTranscription(`Translation: ${translationText}`); // Use helper function
         console.log(`Recognizing: ${text} | Translation: ${translationText}`);
       };
 
@@ -437,7 +466,7 @@ function App() {
           const translationText = e.result.translations.get(targetLanguage) || '';
           setTranscription(text);
           setTranslation(translationText);
-          appendOrReplaceSessionTranscription(`Translation: ${translationText}`); // **Use helper function**
+          appendOrReplaceSessionTranscription(`Translation: ${translationText}`); // Use helper function
           console.log(`Translated Speech: ${translationText}`);
           synthesizeSpeech(translationText);
         } else {
@@ -475,6 +504,7 @@ function App() {
     }
   };
 
+  // Stop Recognition Function
   const stopRecognition = async () => {
     if (stopInProgressRef.current) {
       // Prevent concurrent stop operations
@@ -569,11 +599,13 @@ function App() {
     }
   };
 
+  // Synthesize Speech Function with adjustable speed
   const synthesizeSpeech = (text: string) => {
     try {
       console.log(`Synthesizing speech for text: ${text}`);
       const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, serviceRegion);
       const targetLangMap: { [key: string]: string } = {
+        'en': 'en-US',
         'fr': 'fr-FR',
         'es': 'es-ES',
         'de': 'de-DE',
@@ -587,17 +619,23 @@ function App() {
         'la': 'la', // Latin may not be supported
         // Add more mappings as needed
       };
-      const synthesisLanguage = targetLangMap[targetLanguage] || 'fr-FR';
+      const synthesisLanguage = targetLangMap[targetLanguage] || 'en-US';
       speechConfig.speechSynthesisLanguage = synthesisLanguage;
       speechConfig.speechSynthesisVoiceName = getVoiceName(targetLanguage);
-
-      speechConfig.setProperty(SpeechSDK.PropertyId.SpeechServiceConnection_Synthesizer_VoiceSpeed, "1.4");
 
       const audioConfig = SpeechSDK.AudioConfig.fromDefaultSpeakerOutput();
       const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
 
-      synthesizer.speakTextAsync(
-        text,
+      // Create SSML with adjustable rate based on playbackSpeed state
+      const ssml = `
+        <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${synthesisLanguage}">
+          <voice name="${getVoiceName(targetLanguage)}">
+            <prosody rate="${playbackSpeed}">${text}</prosody>
+          </voice>
+        </speak>`;
+
+      synthesizer.speakSsmlAsync(
+        ssml,
         (result) => {
           if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
             console.log('Speech synthesized for text:', text);
@@ -621,8 +659,10 @@ function App() {
     }
   };
 
+  // Function to get Voice Name based on language
   const getVoiceName = (lang: string): string => {
     const voiceMap: { [key: string]: string } = {
+      'en': 'en-US-JennyNeural',
       'fr': 'fr-FR-DeniseNeural',
       'es': 'es-ES-LauraNeural',
       'de': 'de-DE-KatjaNeural',
@@ -636,9 +676,10 @@ function App() {
       'la': 'la-Latin-Voice', // Placeholder for Latin
       // Add more mappings as needed
     };
-    return voiceMap[lang] || 'fr-FR-DeniseNeural';
+    return voiceMap[lang] || 'en-US-JennyNeural';
   };
 
+  // Handle Target Language Change
   const handleTargetLanguageChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newTargetLanguage = e.target.value;
 
@@ -661,7 +702,7 @@ function App() {
     }
   };
 
-  // Handler for audio input device change
+  // Handle Audio Input Device Change
   const handleAudioInputDeviceChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newDeviceId = e.target.value;
     console.log(`Audio input device changed to: ${newDeviceId}`);
@@ -705,7 +746,7 @@ function App() {
     }
   };
 
-  // **New Function: Download Session Transcription**
+  // Download Session Transcription Function
   const downloadSessionTranscription = () => {
     if (!sessionTranscription) {
       setError('No transcription available to download.');
@@ -722,24 +763,34 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-100 to-gray-200 font-roboto">
-      <div className="container mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-4">
-            <Headphones className="w-12 h-12 text-blue-500 animate-pulse" />
+    <div className="min-h-screen bg-white font-roboto text-[#171B17]">
+      <div className="container mx-auto px-4 py-8">
+        {/* Navigation Bar */}
+        <nav className="flex items-center justify-between py-4">
+          <div className="flex items-center">
+            <img src={logo} alt="App Logo" className="h-10 w-30 mr-3" />
+            <span className="text-2xl font-bold text-[#171B17]">AI Translator</span>
           </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
+          {/* Add more nav items if needed */}
+        </nav>
+
+        {/* Hero Section */}
+        <div className="text-center my-12">
+          <h1 className="text-4xl md:text-6xl font-extrabold text-[#171B17] mb-4">
             Real-time Speech-to-Speech Translation
           </h1>
-          <p className="text-xl text-gray-700">
-            Speak in English, French, Spanish, or Italian - we'll transcribe and translate it automatically
+          <p className="text-xl md:text-2xl text-[#817F75] max-w-2xl mx-auto">
+            Speak in any language, and we'll transcribe and translate it instantly with natural-sounding voices.
           </p>
+          {/* Illustrative Image */}
+          <div className="mt-8">
+            {/* Ensure you have 'contact.png' in src/assets/ */}
+          </div>
         </div>
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded shadow flex items-center">
+          <div className="mb-6 p-4 bg-red-100 text-red-700 rounded-lg shadow flex items-center animate-fadeIn">
             <X className="w-6 h-6 mr-2" />
             <span>{error}</span>
           </div>
@@ -749,14 +800,14 @@ function App() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-center gap-6 mb-8">
           {/* Audio Input Device Selection */}
           <div className="w-full max-w-md">
-            <label htmlFor="audio-input-device" className="block text-gray-700 font-medium mb-2">
+            <label htmlFor="audio-input-device" className="block text-[#817F75] font-medium mb-2">
               Select Audio Input Device:
             </label>
             <select
               id="audio-input-device"
               value={selectedAudioInputDevice}
               onChange={handleAudioInputDeviceChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
+              className="w-full p-3 border border-[#C5D9E2] rounded-md bg-[#F5F5F5] text-[#171B17] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#B6EA01]"
             >
               {audioInputDevices.length > 0 ? (
                 audioInputDevices.map(device => (
@@ -772,18 +823,30 @@ function App() {
 
           {/* Target Language Selection */}
           <div className="w-full max-w-md">
-            <label htmlFor="target-language" className="block text-gray-700 font-medium mb-2">
+            <label htmlFor="target-language" className="block text-[#817F75] font-medium mb-2">
               Select Target Language:
             </label>
             <select
               id="target-language"
               value={targetLanguage}
               onChange={handleTargetLanguageChange}
-              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200"
+              className="w-full p-3 border border-[#C5D9E2] rounded-md bg-[#F5F5F5] text-[#171B17] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#B6EA01]"
             >
               {targetLanguages.map(lang => (
                 <option key={lang.code} value={lang.code}>
-                  {lang.name}
+                  <div className="flex items-center">
+                    <ReactCountryFlag
+                      countryCode={getCountryCode(lang.code)}
+                      svg
+                      style={{
+                        width: '1.5em',
+                        height: '1.5em',
+                        marginRight: '0.5em',
+                        borderRadius: '50%'
+                      }}
+                    />
+                    {lang.name}
+                  </div>
                 </option>
               ))}
             </select>
@@ -792,7 +855,7 @@ function App() {
 
         {/* Phrase List Section */}
         <div className="mb-8">
-          <h2 className="text-3xl font-semibold text-gray-800 mb-4">Enhance Recognition with Phrase List</h2>
+          <h2 className="text-2xl md:text-3xl font-semibold text-[#817F75] mb-4">Enhance Recognition with Phrase List</h2>
           <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
             <input
               type="text"
@@ -800,35 +863,35 @@ function App() {
               onChange={(e) => setPhraseInput(e.target.value)}
               onKeyDown={handlePhraseInputKeyDown}
               placeholder="Enter a phrase or word and press Enter"
-              className="w-full md:w-auto p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 transition duration-200 text-sm"
+              className="w-full md:w-auto p-2 border border-[#C5D9E2] rounded-md bg-[#F5F5F5] text-[#171B17] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#B6EA01] transition duration-200 text-sm"
             />
             <button
               onClick={handleAddPhrase}
-              className="flex items-center px-3 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              className="flex items-center px-3 py-2 bg-[#B6EA01] text-[#171B17] rounded-full hover:bg-[#A0D800] transition duration-200 focus:outline-none shadow-sm text-sm"
+              aria-label="Add Phrase"
             >
-              <Plus className="w-4 h-4 mr-1" />
-              Add
+              <Plus className="w-4 h-4" />
             </button>
             <button
               onClick={handleClearPhrases}
-              className={`flex items-center px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm ${
+              className={`flex items-center px-3 py-2 bg-[#817F75] text-white rounded-full hover:bg-[#6E6E6E] transition duration-200 focus:outline-none shadow-sm text-sm ${
                 phraseList.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               disabled={phraseList.length === 0}
+              aria-label="Clear Phrases"
             >
-              <Trash2 className="w-4 h-4 mr-1" />
-              Clear
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
           {/* Display Phrase List */}
           {phraseList.length > 0 && (
             <div className="mt-4">
-              <h3 className="text-lg font-medium text-gray-700 mb-2">Current Phrases:</h3>
-              <div className="h-24 overflow-y-auto p-2 bg-gray-50 rounded-md shadow-inner">
+              <h3 className="text-lg font-medium text-[#817F75] mb-2">Current Phrases:</h3>
+              <div className="h-24 overflow-y-auto p-2 bg-[#F5F5F5] border border-[#C5D9E2] rounded-md shadow-inner">
                 <ul className="space-y-1">
                   {phraseList.map((phrase, index) => (
                     <li key={index} className="flex items-center justify-between">
-                      <span className="text-sm">{phrase}</span>
+                      <span className="text-sm text-[#171B17]">{phrase}</span>
                       <button
                         onClick={() => handleRemovePhrase(phrase)}
                         className="text-red-500 hover:text-red-700 transition duration-200 focus:outline-none"
@@ -844,16 +907,33 @@ function App() {
           )}
         </div>
 
+        {/* Audio Playback Speed Control */}
+        <div className="flex flex-col items-center mb-8">
+          <label htmlFor="playback-speed" className="block text-[#817F75] font-medium mb-2">
+            Adjust Audio Playback Speed: {playbackSpeed.toFixed(1)}x
+          </label>
+          <input
+            type="range"
+            id="playback-speed"
+            min="0.5"
+            max="2.0"
+            step="0.1"
+            value={playbackSpeed}
+            onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))}
+            className="w-full max-w-md"
+          />
+        </div>
+
         {/* Start/Stop Button */}
         <div className="text-center mb-8">
           {!isRecognizing ? (
             <button
               onClick={startRecognition}
-              className={`flex items-center justify-center w-48 py-3 rounded-md font-semibold text-white transition duration-200 ${
+              className={`flex items-center justify-center w-48 py-3 rounded-full font-semibold text-white transition duration-200 ${
                 (!speechKey || !serviceRegion || !!error || audioInputDevices.length === 0)
-                  ? 'bg-blue-300 cursor-not-allowed'
-                  : 'bg-blue-500 hover:bg-blue-600'
-              }`}
+                  ? 'bg-[#B6EA01] opacity-50 cursor-not-allowed'
+                  : 'bg-[#B6EA01] hover:bg-[#A0D800]'
+              } shadow-lg transform hover:scale-105 transition-transform`}
               disabled={!speechKey || !serviceRegion || !!error || audioInputDevices.length === 0}
             >
               Start Translation
@@ -861,7 +941,7 @@ function App() {
           ) : (
             <button
               onClick={stopRecognition}
-              className="flex items-center justify-center w-48 py-3 bg-red-500 hover:bg-red-600 text-white rounded-md font-semibold transition duration-200"
+              className="flex items-center justify-center w-48 py-3 bg-red-500 hover:bg-red-600 text-white rounded-full font-semibold transition duration-200 shadow-lg transform hover:scale-105 transition-transform"
             >
               Stop Translation
             </button>
@@ -871,8 +951,8 @@ function App() {
         {/* Detected Language */}
         {detectedLanguage && (
           <div className="mt-4 text-center">
-            <p className="text-lg text-gray-700">
-              Detected Language: <strong>{detectedLanguage.toUpperCase()}</strong>
+            <p className="text-lg text-[#817F75]">
+              Detected Language: <strong className="text-[#B6EA01]">{detectedLanguage.toUpperCase()}</strong>
             </p>
           </div>
         )}
@@ -882,18 +962,18 @@ function App() {
           <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* Transcription */}
             <div>
-              <h2 className="text-3xl font-bold mb-4 text-gray-800">Transcription</h2>
-              <div className="p-6 bg-white rounded-lg shadow-md min-h-[150px] animate-fade-in">
-                <p className="text-gray-800 whitespace-pre-wrap">
+              <h2 className="text-2xl md:text-3xl font-bold mb-4 text-[#817F75]">Transcription</h2>
+              <div className="p-6 bg-[#F5F5F5] rounded-lg shadow-md min-h-[150px]">
+                <p className="text-[#171B17] whitespace-pre-wrap">
                   {transcription || 'Transcription will appear here...'}
                 </p>
               </div>
             </div>
             {/* Translation */}
             <div>
-              <h2 className="text-3xl font-bold mb-4 text-gray-800">Translation</h2>
-              <div className="p-6 bg-white rounded-lg shadow-md min-h-[150px] animate-fade-in">
-                <p className="text-gray-800 whitespace-pre-wrap">
+              <h2 className="text-2xl md:text-3xl font-bold mb-4 text-[#817F75]">Translation</h2>
+              <div className="p-6 bg-[#F5F5F5] rounded-lg shadow-md min-h-[150px]">
+                <p className="text-[#171B17] whitespace-pre-wrap">
                   {translation || 'Translation will appear here...'}
                 </p>
               </div>
@@ -901,19 +981,19 @@ function App() {
           </div>
         )}
 
-        {/* **New Section: Session Transcription and Download** */}
+        {/* Session Transcription and Download */}
         {showTranscriptionSections && (
           <div className="mt-12">
-            <h2 className="text-3xl font-bold mb-4 text-gray-800">Session Transcription</h2>
-            <div className="p-6 bg-white rounded-lg shadow-md min-h-[200px] overflow-y-auto animate-fade-in">
-              <pre className="text-gray-800 whitespace-pre-wrap">
+            <h2 className="text-2xl md:text-3xl font-bold mb-4 text-[#817F75]">Session Transcription</h2>
+            <div className="p-6 bg-[#F5F5F5] rounded-lg shadow-md min-h-[200px] overflow-y-auto">
+              <pre className="text-[#171B17] whitespace-pre-wrap">
                 {sessionTranscription || 'Session transcription will appear here...'}
               </pre>
             </div>
             <div className="mt-4 text-center">
               <button
                 onClick={downloadSessionTranscription}
-                className={`flex items-center justify-center px-6 py-3 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                className={`flex items-center justify-center px-6 py-3 bg-purple-500 text-white rounded-full hover:bg-purple-600 transition duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-lg transform hover:scale-105 transition-transform ${
                   !sessionTranscription ? 'bg-purple-300 cursor-not-allowed' : ''
                 }`}
                 disabled={!sessionTranscription}
@@ -925,6 +1005,15 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Footer */}
+      <footer className="bg-[#F5F5F5] shadow-inner mt-12">
+        <div className="container mx-auto px-4 py-6 flex flex-col items-center">
+          {/* Contact Image */}
+          <img src={contactImage} alt="Contact Us" className="h-30 w-50 mb-1" />
+          <p className="text-gray-600">&copy; 2024 AI Translator. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   );
 }
