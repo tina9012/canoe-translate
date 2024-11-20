@@ -1,0 +1,172 @@
+/* styles.css */
+body {
+    font-family: 'Outfit', sans-serif;
+    background: linear-gradient(135deg, #ffe8e9, #faf3e8, #e9eafd);
+    font-weight: 500; /* Medium weight */
+    margin: 0;
+    padding: 0;
+    color: #280065; /* Neutral text color */
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Ensures content is centered horizontally */
+    justify-content: flex-start; /* Align content at the top */
+    min-height: 100vh; /* Ensure the body takes up full viewport height */
+    text-align: center; /* Center all text content */
+  }
+
+  /* styles.css or equivalent */
+  .full-text {
+    font-family: 'Outfit', sans-serif; /* Replace with your font */
+    font-size: 1rem; /* Adjust size if needed */
+    line-height: 1; /* Adjust to reduce space between lines */
+    white-space: pre-wrap; /* Preserve line breaks without adding extra spacing */
+    margin: 0; /* Remove any default margin */
+  }
+  
+  h1, h2, h3 {
+    color: #280065; /* Darker color for headings */
+  }
+  
+  a {
+    color: #280065; /* Primary color for links */
+    text-decoration: none;
+  }
+  
+  a:hover {
+    text-decoration: underline;
+  }
+
+  .container {
+    margin: 20px 0;
+  }
+  
+  .scrollable-box {
+    height: 150px; /* Set a fixed height */
+    max-width: 750px;
+    overflow-y: auto; /* Enable vertical scrolling */
+    overflow-x: hidden; /* Disable horizontal scrolling */
+    border: 1px solid #ffffff; /* Optional: Add a border for better visibility */
+    padding: 10px; /* Adds inner spacing for the content */
+    font-family: 'YourFontName', sans-serif; /* Ensures consistent font */
+    font-size: 1rem; /* Adjust text size for readability */
+    line-height: 1.5; /* Improves line spacing */
+    background: linear-gradient(135deg, #fff9fc, #fff9fc);
+    border-radius: 10px; /* Adds rounded corners */
+    box-sizing: border-box; /* Ensures padding and border are included in the width/height */
+  }
+
+  .page-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Horizontally center content */
+    justify-content: center; /* Vertically center content if necessary */
+    text-align: center; /* Ensures text is centered */
+    padding: 20px; /* Add padding for spacing */
+  }
+  
+
+/* Header */
+.page-title {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    color: #280065;
+  }
+
+  .qr-code-container {
+    background-color: white;
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Ensures QR code stays centered */
+    justify-content: center; /* Keeps QR code centered */
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+    width: 600px; /* Fixed width for the QR code container */
+    text-align: center; /* Ensures content is centered */
+    margin: 0 auto; /* Ensures the container is centered */
+  }
+
+  .target-language-container {
+    display: flex;
+    flex-direction: column; /* Allows stacking of elements vertically */
+    align-items: center; /* Horizontally centers the content */
+    justify-content: center; /* Vertically centers the content if necessary */
+    margin-top: 20px; /* Adds spacing above the container */
+  }
+  
+  .multi-select {
+    width: 300px; /* Fixed width for consistency */
+    position: relative; /* Ensures dropdown aligns with the trigger */
+  }
+  
+  .multi-select-dropdown {
+    position: absolute;
+    top: 100%; /* Positions dropdown below the input */
+    left: 0;
+    width: 100%; /* Matches the trigger width */
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    margin-top: 5px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    max-height: 200px; /* Limit dropdown height */
+    overflow-y: auto; /* Enables scrolling for long lists */
+    z-index: 10; /* Ensures dropdown is above other elements */
+  }
+  
+  .multi-select-option {
+    padding: 10px;
+    background-color: white;
+    cursor: pointer;
+  }
+  
+  .multi-select-option.selected {
+    background-color: #e0e0e0; /* Highlights selected options */
+  }  
+  
+  .transcription-section {
+    max-height: 200px; /* Set a fixed max height for transcription */
+    overflow-y: auto; /* Allows scrolling if transcription exceeds the max height */
+    width: 100%;
+    margin-bottom: 20px; /* Space between transcription and other elements */
+  }
+/* styles.css */
+
+/* Large Button Styles */
+button {
+    padding: 10px 30px; /* Adds space around the text inside the button */
+    font-size: 24px; /* Larger font for better visibility */
+    line-height: 1.5; /* Ensure spacing between lines if multiple lines */
+    background-color: #f1e7ff; /* Button background color */
+    color: white;
+    border: none;
+    border-radius: 12px; /* Round corners */
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    display: inline-flex; /* Flexbox for centering content */
+    justify-content: center; /* Center text horizontally */
+    align-items: center; /* Center text vertically */
+    width: 250px; /* Fixed width for consistency */
+    height: 50px; /* Set height for a bigger button */
+    box-sizing: border-box; /* Ensures padding is included in total size */
+    font-weight: bold; /* Bold text for emphasis */
+  }
+  
+  /* Hover effect */
+  button:hover {
+    background-color: #ff8979; /* Slightly darker color on hover */
+    transform: scale(1.05); /* Slight scaling on hover */
+  }
+  
+  /* Active (pressed) effect */
+  button:active {
+    transform: scale(0.98); /* Slight shrinking when clicked */
+  }
+  
+  /* Disabled state */
+  button:disabled {
+    background-color: #7f8c8d; /* Darker color for disabled state */
+    cursor: not-allowed; /* Disable pointer on hover */
+  }
+  
