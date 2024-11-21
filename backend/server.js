@@ -28,11 +28,16 @@ wss.on("connection", (ws) => {
             console.log("Received:", parsedMessage);
 
             // Broadcast the message to all connected clients
-            wss.clients.forEach((client) => {
-                if (client.readyState === ws.OPEN) {
-                    client.send(JSON.stringify(parsedMessage));
-                }
-            });
+            if (parsedMessage.type === "ping") {
+                ws.send(JSON.stringify({ type: "pong" })); // Send pong in response to ping
+            } else {
+                // Broadcast the message to all connected clients
+                wss.clients.forEach((client) => {
+                    if (client.readyState === ws.OPEN) {
+                        client.send(JSON.stringify(parsedMessage));
+                    }
+                });
+            }
         } catch (error) {
             console.error("Error parsing message:", error);
         }

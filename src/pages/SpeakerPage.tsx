@@ -73,6 +73,7 @@ const SpeakerPage: React.FC = () => {
 
   useEffect(() => {
     ws.current = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app");
+    //ws.current = new WebSocket("ws://localhost:8080");
 
     ws.current.onopen = () => {
       console.log("WebSocket connection established.");
@@ -86,7 +87,14 @@ const SpeakerPage: React.FC = () => {
       console.error("WebSocket error:", error);
     };
 
+    const pingInterval = setInterval(() => {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 30000); 
+
     return () => {
+      clearInterval(pingInterval);
       ws.current?.close(); // Clean up WebSocket on component unmount
     };
   }, []);

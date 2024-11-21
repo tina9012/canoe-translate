@@ -29,6 +29,7 @@ const ListenerPage: React.FC = () => {
     console.log("Session ID:", currentSessionId);
 
     const ws = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app"); // WebSocket server URL
+    //const ws = new WebSocket("ws://localhost:8080");
 
     ws.onopen = () => {
       console.log("WebSocket connection established.");
@@ -85,7 +86,15 @@ const ListenerPage: React.FC = () => {
       console.log("WebSocket disconnected on ListenerPage");
     };
 
+    const pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+        console.log("Ping sent to server.");
+      }
+    }, 30000); // Send every 30 seconds
+
     return () => {
+      clearInterval(pingInterval);
       ws.close();
     };
   }, [sessionId]);
