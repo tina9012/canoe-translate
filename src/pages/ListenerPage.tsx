@@ -33,7 +33,7 @@ const ListenerPage: React.FC = () => {
   const [serviceRegion] = useState<string>(import.meta.env.VITE_SPEECH_REGION || "YOUR_SERVICE_REGION");
 
   useEffect(() => {
-    const processQueue = () => {
+    //const processQueue = () => {
       if (playbackCompleted && audioQueue.length > 0) {
         const nextAudio = audioQueue[0];
         if (nextAudio) {
@@ -41,12 +41,14 @@ const ListenerPage: React.FC = () => {
           setAudioQueue((prevQueue) => prevQueue.slice(1)); // Remove the first item
         }
       }
-    };
+    //};
 
-    processQueue();
+    //processQueue();
+
   }, [playbackCompleted, audioQueue]);
 
   const playAudio = (text: string, languageCode: string) => {
+    console.log("Inside playAudio function");
     if (!speechKey || !serviceRegion) {
       console.error("Azure Speech SDK credentials are missing.");
       return;
@@ -96,8 +98,13 @@ const ListenerPage: React.FC = () => {
     };
 
   const enqueueAudio = (text: string, languageCode: string) => {
-    setAudioQueue((prevQueue) => [...prevQueue, { text, languageCode }]);
-  };
+    console.log("enqueueAudio called with:", text, languageCode);
+    setAudioQueue((prevQueue) => {
+      const updatedQueue = [...prevQueue, { text, languageCode }];
+      console.log("Updated audioQueue:", updatedQueue);
+      return updatedQueue;
+  });
+};
 
   const getVoiceForLanguage = (languageCode: string): string => {
     const voiceMap: { [key: string]: string } = {
@@ -166,9 +173,10 @@ const ListenerPage: React.FC = () => {
     //const ws = new WebSocket("ws://localhost:8080");
     ws.current = new WebSocket("ws://localhost:8080"); // Replace with your WebSocket URL
 
-
     ws.current.onopen = () => {
       console.log("WebSocket connection established.");
+      setPlaybackCompleted(true);
+      setAudioQueue([]);
     };
 
     // Handle WebSocket messages
@@ -209,6 +217,7 @@ const ListenerPage: React.FC = () => {
           
 
           if (data.isComplete) {
+            console.log("Queuing audio now!")
             setPhraseCompleted(true);
             if (data.translations && data.translations[selectedLanguage]) {
               enqueueAudio(data.translations[selectedLanguage], selectedLanguage);
