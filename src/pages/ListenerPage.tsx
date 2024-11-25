@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
-import { useSession } from "../components/SessionContext";
-
 
 const languages = [
   { code: "en", name: "English" },
@@ -33,24 +31,6 @@ const ListenerPage: React.FC = () => {
 
   const [speechKey] = useState<string>(import.meta.env.VITE_SPEECH_KEY || "YOUR_SPEECH_KEY");
   const [serviceRegion] = useState<string>(import.meta.env.VITE_SPEECH_REGION || "YOUR_SERVICE_REGION");
-
-  const unlockAudioForMobile = () => {
-    const audio = new Audio("path/to/silent.mp3"); // Use your silent audio file
-    audio.play()
-        .then(() => {
-            console.log("Audio context unlocked.");
-        })
-        .catch((error) => {
-            console.error("Error unlocking audio context:", error);
-        });
-};
-
-useEffect(() => {
-    document.addEventListener("click", unlockAudioForMobile, { once: true });
-    return () => {
-        document.removeEventListener("click", unlockAudioForMobile);
-    };
-}, []);
 
   useEffect(() => {
     const processQueue = () => {
@@ -142,16 +122,48 @@ useEffect(() => {
     const currentSessionId = window.location.pathname.split("/").pop() || "";
     setSessionId(currentSessionId);
     console.log("Session ID:", currentSessionId);
+  }, []);
 
-    const ws = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app"); // WebSocket server URL
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const fetchSessionData = async () => {
+      try {
+          const response = await fetch(`http://localhost:3000/api/session-data?sessionId=${sessionId}`);
+          const contentType = response.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+              throw new Error("Response is not JSON");
+          }
+          const data = await response.json();
+          console.log("Fetched session data:", data);
+          setAvailableLanguages(data.languages);
+          setFullTranslations(data.fullTranslations || {});
+      } catch (error) {
+          console.error("Error fetching session data:", error);
+      }
+  };
+
+
+    fetchSessionData();
+  }, [sessionId]);
+
+
+  const ws = useRef<WebSocket | null>(null); // Correctly typed as a WebSocket or null
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    //const ws = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app"); // WebSocket server URL
     //const ws = new WebSocket("ws://localhost:8080");
+    ws.current = new WebSocket("ws://localhost:8080"); // Replace with your WebSocket URL
 
-    ws.onopen = () => {
+
+    ws.current.onopen = () => {
       console.log("WebSocket connection established.");
     };
 
     // Handle WebSocket messages
-    ws.onmessage = (event) => {
+    ws.current.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         console.log("Received WebSocket message:", data);
@@ -201,28 +213,26 @@ useEffect(() => {
         console.error("Error parsing WebSocket message:", error);
       }
     };
-    
 
-    ws.onerror = (error) => {
+    ws.current.onerror = (error) => {
       console.error("WebSocket error:", error);
     };
 
-    ws.onclose = () => {
+    ws.current.onclose = () => {
       console.log("WebSocket disconnected on ListenerPage");
     };
 
     const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ping" }));
-        console.log("Ping sent to server.");
+      if (ws.current?.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: "ping" }));
       }
-    }, 30000); // Send every 30 seconds
+    }, 30000);
 
     return () => {
       clearInterval(pingInterval);
-      ws.close();
+      ws.current?.close();
     };
-  }, [sessionId, selectedLanguage]);
+  }, [sessionId]);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedLanguage(e.target.value);
@@ -257,11 +267,6 @@ useEffect(() => {
               </option>
             ))}
           </select>
-
-      <div className="container">
-        <h2>Transcription</h2>
-        <div className="scrollable-box">{receivedTranscription || "Waiting for transcription..."}</div>
-      </div>
 
       {/* Translation Section */}
       <div className="container">

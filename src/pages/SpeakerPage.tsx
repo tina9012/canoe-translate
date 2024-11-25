@@ -67,10 +67,33 @@ const SpeakerPage: React.FC = () => {
     }
   }, [sessionId]);
 
-  const generateNewSession = () => {
+  const generateNewSession = async () => {
     const newSessionId = uuidv4();
-    navigate(`/speaker/${newSessionId}`, { replace: true });
+  
+    try {
+      console.log("Creating new session:", newSessionId);
+      const response = await fetch("http://localhost:3000/api/create-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: newSessionId }),
+      });
+  
+      if (!response.ok) {
+        const errorMessage = await response.text();
+        console.error("Failed to create session:", errorMessage);
+        return;
+      }
+  
+      console.log("Session created successfully:", newSessionId);
+  
+      // Navigate to the new session
+      navigate(`/speaker/${newSessionId}`, { replace: true });
+    } catch (error) {
+      console.error("Error creating session:", error);
+    }
   };
+  
+  
 
   // Listener URL with session ID
 
@@ -94,8 +117,8 @@ const SpeakerPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    ws.current = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app");
-    //ws.current = new WebSocket("ws://localhost:8080");
+    //ws.current = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app");
+    ws.current = new WebSocket("ws://localhost:8080");
 
     ws.current.onopen = () => {
       console.log("WebSocket connection established.");
@@ -121,18 +144,26 @@ const SpeakerPage: React.FC = () => {
     };
   }, []);
 
-  const sendUpdate = (data: {
-    transcription?: string;
-    translations?: { [key: string]: string };
-    fullTranslations?: { [key: string]: string };
-    languages?: string[];
-    sessionStarted?: boolean;
-    isComplete?: boolean;
+    const sendUpdate = (data: {
+      transcription?: string;
+      translations?: { [key: string]: string };
+      fullTranslations?: { [key: string]: string };
+      languages?: string[];
+      sessionStarted?: boolean;
+      isComplete?: boolean;
   }) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify({ sessionId, ...data }));
-    }
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          const message = {
+              sessionId,
+              languages: targetLanguages,
+              fullTranslations,
+              ...data,
+          };
+          console.log("Sending WebSocket message:", message);
+          ws.current.send(JSON.stringify(message));
+      }
   };
+
 
   const startRecognition = () => {
     if (!speechKey || !serviceRegion) {
