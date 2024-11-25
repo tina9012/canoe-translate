@@ -26,60 +26,85 @@ db.serialize(() => {
 
 wss.on("connection", (ws) => {
     console.log("New WebSocket connection established");
-
+  
     ws.on("message", (message) => {
-        try {
-            const parsedMessage = JSON.parse(message.toString());
-            const { sessionId, languages, fullTranslations } = parsedMessage;
-
-            console.log("Parsed WebSocket message:", parsedMessage);
-
-            if (sessionId) {
-                // Save session data to DB
-                db.run(
-                    `
-                    INSERT OR REPLACE INTO sessions (session_id, languages, full_translations)
-                    VALUES (?, ?, ?)
-                    `,
-                    [
-                        sessionId,
-                        JSON.stringify(languages || []),
-                        JSON.stringify(fullTranslations || {}),
-                    ],
-                    (err) => {
-                        if (err) {
-                            console.error("Error saving session to DB:", err.message);
-                        } else {
-                            console.log(`Session saved successfully for sessionId=${sessionId}`);
-                        }
-                    }
-                );
-            }
-
-            // Broadcast the message to all connected clients
-            wss.clients.forEach((client) => {
-                if (client !== ws && client.readyState === WebSocket.OPEN) {
-                    console.log("Broadcasting message:", parsedMessage);
-                    client.send(JSON.stringify(parsedMessage));
+      try {
+        const parsedMessage = JSON.parse(message.toString());
+        const { sessionId, fullTranslations } = parsedMessage;
+  
+        console.log("Parsed WebSocket message:", parsedMessage);
+  
+        if (sessionId && fullTranslations) {
+          // Fetch the existing translations from the database
+          db.get(
+            "SELECT full_translations FROM sessions WHERE session_id = ?",
+            [sessionId],
+            (err, row) => {
+              if (err) {
+                console.error("Error fetching session:", err.message);
+                return;
+              }
+  
+              let existingTranslations = {};
+              if (row && row.full_translations) {
+                try {
+                  existingTranslations = JSON.parse(row.full_translations);
+                } catch (parseError) {
+                  console.error("Error parsing existing translations:", parseError);
                 }
-            });
-        } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
+              }
+  
+              // Append the new translations to the existing ones
+              const updatedTranslations = { ...existingTranslations };
+              for (const lang in fullTranslations) {
+                const newTranslation = fullTranslations[lang];
+                updatedTranslations[lang] =
+                  (updatedTranslations[lang] || "") + "\n" + newTranslation;
+              }
+  
+              // Save the updated translations back to the database
+              db.run(
+                `
+                INSERT OR REPLACE INTO sessions (session_id, languages, full_translations)
+                VALUES (?, ?, ?)
+                `,
+                [
+                  sessionId,
+                  JSON.stringify(parsedMessage.languages || []),
+                  JSON.stringify(updatedTranslations),
+                ],
+                (err) => {
+                  if (err) {
+                    console.error("Error saving session:", err.message);
+                  } else {
+                    console.log(`Session updated successfully for sessionId=${sessionId}`);
+                  }
+                }
+              );
+            }
+          );
         }
+  
+        // Broadcast the message to all connected clients
+        wss.clients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(parsedMessage));
+          }
+        });
+      } catch (error) {
+        console.error("Error parsing WebSocket message:", error);
+      }
     });
-
+  
     ws.on("close", () => {
-        console.log("WebSocket connection closed");
+      console.log("WebSocket connection closed");
     });
-
+  
     ws.on("error", (error) => {
-        console.error("WebSocket error:", error);
+      console.error("WebSocket error:", error);
     });
-});
-
-
-
-
+  });
+  
 
 app.use(express.json());
 

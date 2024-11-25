@@ -125,6 +125,15 @@ const ListenerPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!sessionStarted) {
+      console.log("Session stopped. Resetting state.");
+      setReceivedTranscription("");
+      setTranslations({});
+      setFullTranslations({});
+    }
+  }, [sessionStarted]);
+
+  useEffect(() => {
     if (!sessionId) return;
 
     const fetchSessionData = async () => {
@@ -185,19 +194,19 @@ const ListenerPage: React.FC = () => {
           if (data.fullTranslations) {
             setFullTranslations((prevFullTranslations) => {
               const updatedFullTranslations = { ...prevFullTranslations };
-    
+          
               for (const lang in data.fullTranslations) {
                 const newTranslation = data.fullTranslations[lang];
-                if (newTranslation) {
-                  // Append the new translation to the existing one
+                if (newTranslation && !updatedFullTranslations[lang]?.endsWith(newTranslation)) {
                   updatedFullTranslations[lang] =
                     (updatedFullTranslations[lang] || "") + "\n" + newTranslation;
                 }
               }
-    
+          
               return updatedFullTranslations;
             });
           }
+          
 
           if (data.isComplete) {
             setPhraseCompleted(true);

@@ -159,6 +159,8 @@ const SpeakerPage: React.FC = () => {
               fullTranslations,
               ...data,
           };
+          console.log("translations: ", translations)
+          console.log("full translations: ", fullTranslations)
           console.log("Sending WebSocket message:", message);
           ws.current.send(JSON.stringify(message));
       }
@@ -166,6 +168,8 @@ const SpeakerPage: React.FC = () => {
 
 
   const startRecognition = () => {
+    sendUpdate({ fullTranslations: {} }); // Notify listeners that fullTranslations is reset
+
     if (!speechKey || !serviceRegion) {
       alert("Missing Speech SDK credentials.");
       return;
@@ -258,7 +262,9 @@ const SpeakerPage: React.FC = () => {
     }
     setIsRecognizing(false);
     setSessionStarted(false);
-        sendUpdate({ sessionStarted: false });
+    sendUpdate({ sessionStarted: false });
+    setFullTranslations({}); // Clear fullTranslations when the session stops
+
 
   };
 
