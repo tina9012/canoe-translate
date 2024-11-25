@@ -26,25 +26,25 @@ const ListenerPage: React.FC = () => {
   const [phraseCompleted, setPhraseCompleted] = useState<boolean>(false); // New state to track phrase completion
   const [playbackCompleted, setPlaybackCompleted] = useState<boolean>(true); // New state to track phrase completion
   const [audioQueue, setAudioQueue] = useState<Array<{ text: string; languageCode: string }>>([]);
+  const pingIntervalRef = useRef<number | null>(null); // Store the ping interval
+
+
+  const [wsInstance, setWsInstance] = useState<WebSocket | null>(null);
 
   const synthesizerRef = useRef<SpeechSDK.SpeechSynthesizer | null>(null);
 
   const [speechKey] = useState<string>(import.meta.env.VITE_SPEECH_KEY || "YOUR_SPEECH_KEY");
   const [serviceRegion] = useState<string>(import.meta.env.VITE_SPEECH_REGION || "YOUR_SERVICE_REGION");
 
-  useEffect(() => {
-    const processQueue = () => {
-      if (playbackCompleted && audioQueue.length > 0) {
-        const nextAudio = audioQueue[0];
-        if (nextAudio) {
-          playAudio(nextAudio.text, nextAudio.languageCode);
-          setAudioQueue((prevQueue) => prevQueue.slice(1)); // Remove the first item
-        }
+  const processQueue = () => {
+    if (playbackCompleted && audioQueue.length > 0) {
+      const nextAudio = audioQueue[0];
+      if (nextAudio) {
+        playAudio(nextAudio.text, nextAudio.languageCode);
+        setAudioQueue((prevQueue) => prevQueue.slice(1)); // Remove the first item
       }
-    };
-
-    processQueue();
-  }, [playbackCompleted, audioQueue]);
+    }
+  };
 
   const playAudio = (text: string, languageCode: string) => {
     console.log("Inside playAudio function");
@@ -120,6 +120,14 @@ const ListenerPage: React.FC = () => {
     return voiceMap[languageCode] || "en-US-JennyNeural";
   };
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      processQueue();
+    }, 100);
+
+    return () => clearTimeout(timer); // Cleanup timer
+  }, [playbackCompleted, audioQueue]);
+
 
   useEffect(() => {
     const currentSessionId = window.location.pathname.split("/").pop() || "";
@@ -159,35 +167,23 @@ const ListenerPage: React.FC = () => {
     fetchSessionData();
   }, [sessionId]);
 
-
   const ws = useRef<WebSocket | null>(null); // Correctly typed as a WebSocket or null
 
-  useEffect(() => {
-    if (!sessionId) return;
+  const initializeWebSocket = () => {
+    if (ws.current) {
+      ws.current.close();
+    }
 
-    //const ws = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app"); // WebSocket server URL
-    //const ws = new WebSocket("ws://localhost:8080");
-    console.log("Setting up a new WebSocket connection.");
+    const newWs = new WebSocket("ws://localhost:8080");
 
-    ws.current = new WebSocket("ws://localhost:8080"); // Replace with your WebSocket URL
-
-
-    ws.current.onopen = () => {
+    newWs.onopen = () => {
       console.log("WebSocket connection established.");
       setPlaybackCompleted(true);
       setAudioQueue([]);
+      processQueue();
     };
 
-    let messageProcessing = false;
-
-    // Handle WebSocket messages
-    ws.current.onmessage = (event) => {
-      if (messageProcessing) {
-        console.warn("Message processing already in progress, skipping.");
-        return;
-    }
-
-    messageProcessing = true;
+    newWs.onmessage = (event) => {
 
       try {
         const data = JSON.parse(event.data);
@@ -239,34 +235,44 @@ const ListenerPage: React.FC = () => {
         console.error("Error parsing WebSocket message:", error);
       } finally {
         setTimeout(() => {
-            messageProcessing = false;
         }, 500); // Adjust debounce timing as needed
     }
   };
 
-    ws.current.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
+  newWs.onerror = (error) => {
+    console.error("WebSocket error:", error);
+  };
 
-    ws.current.onclose = () => {
-      console.log("WebSocket disconnected on ListenerPage");
-      setTimeout(() => {
-        ws.current = new WebSocket("ws://localhost:8080");
-    }, 1000); // Reconnect after 1 second
+  newWs.onclose = () => {
+    console.log("WebSocket connection closed.");
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+  };
 
-    };
+  pingIntervalRef.current = window.setInterval(() => {
+    if (newWs.readyState === WebSocket.OPEN) {
+      newWs.send(JSON.stringify({ type: "ping" }));
+      console.log("Sent ping to keep WebSocket alive.");
+    }
+  }, 30000);
 
-    const pingInterval = setInterval(() => {
-      if (ws.current?.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: "ping" }));
-      }
-    }, 30000);
+  ws.current = newWs;
+};
 
-    return () => {
-      clearInterval(pingInterval);
-      ws.current?.close();
-    };
-  }, [sessionId]);
+useEffect(() => {
+  if (sessionId) {
+    initializeWebSocket();
+  }
+  return () => {
+    if (ws.current) ws.current.close();
+    if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+  };
+}, [sessionId]);
+
+const handleReconnectWebSocket = () => {
+  initializeWebSocket();
+};
+
+
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedLanguage(e.target.value);
@@ -316,7 +322,7 @@ const ListenerPage: React.FC = () => {
         <div className="scrollable-box">{fullTranslatedText}</div>
       </div>
 
-      <button>Enable Audio Playback</button>
+      <button onClick={handleReconnectWebSocket}>Enable Audio Playback</button>
 
       {/* Download Button */}
       <button onClick={handleDownload}>Download Full Translated Text</button>
