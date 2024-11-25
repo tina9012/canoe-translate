@@ -33,7 +33,7 @@ const ListenerPage: React.FC = () => {
   const [serviceRegion] = useState<string>(import.meta.env.VITE_SPEECH_REGION || "YOUR_SERVICE_REGION");
 
   useEffect(() => {
-    //const processQueue = () => {
+    const processQueue = () => {
       if (playbackCompleted && audioQueue.length > 0) {
         const nextAudio = audioQueue[0];
         if (nextAudio) {
@@ -41,10 +41,9 @@ const ListenerPage: React.FC = () => {
           setAudioQueue((prevQueue) => prevQueue.slice(1)); // Remove the first item
         }
       }
-    //};
+    };
 
-    //processQueue();
-
+    processQueue();
   }, [playbackCompleted, audioQueue]);
 
   const playAudio = (text: string, languageCode: string) => {
@@ -99,12 +98,9 @@ const ListenerPage: React.FC = () => {
 
   const enqueueAudio = (text: string, languageCode: string) => {
     console.log("enqueueAudio called with:", text, languageCode);
-    setAudioQueue((prevQueue) => {
-      const updatedQueue = [...prevQueue, { text, languageCode }];
-      console.log("Updated audioQueue:", updatedQueue);
-      return updatedQueue;
-  });
-};
+
+    setAudioQueue((prevQueue) => [...prevQueue, { text, languageCode }]);
+  };
 
   const getVoiceForLanguage = (languageCode: string): string => {
     const voiceMap: { [key: string]: string } = {
@@ -171,7 +167,10 @@ const ListenerPage: React.FC = () => {
 
     //const ws = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app"); // WebSocket server URL
     //const ws = new WebSocket("ws://localhost:8080");
+    console.log("Setting up a new WebSocket connection.");
+
     ws.current = new WebSocket("ws://localhost:8080"); // Replace with your WebSocket URL
+
 
     ws.current.onopen = () => {
       console.log("WebSocket connection established.");
@@ -179,8 +178,17 @@ const ListenerPage: React.FC = () => {
       setAudioQueue([]);
     };
 
+    let messageProcessing = false;
+
     // Handle WebSocket messages
     ws.current.onmessage = (event) => {
+      if (messageProcessing) {
+        console.warn("Message processing already in progress, skipping.");
+        return;
+    }
+
+    messageProcessing = true;
+
       try {
         const data = JSON.parse(event.data);
         console.log("Received WebSocket message:", data);
@@ -229,8 +237,12 @@ const ListenerPage: React.FC = () => {
         }
       } catch (error) {
         console.error("Error parsing WebSocket message:", error);
-      }
-    };
+      } finally {
+        setTimeout(() => {
+            messageProcessing = false;
+        }, 500); // Adjust debounce timing as needed
+    }
+  };
 
     ws.current.onerror = (error) => {
       console.error("WebSocket error:", error);
@@ -238,6 +250,10 @@ const ListenerPage: React.FC = () => {
 
     ws.current.onclose = () => {
       console.log("WebSocket disconnected on ListenerPage");
+      setTimeout(() => {
+        ws.current = new WebSocket("ws://localhost:8080");
+    }, 1000); // Reconnect after 1 second
+
     };
 
     const pingInterval = setInterval(() => {

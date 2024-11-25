@@ -1,0 +1,86 @@
+[33mcommit dcdb1849c281988b9ea1337ced17ab5e77cbc6b0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Tina <tinazxia@gmail.com>
+Date:   Mon Nov 25 17:11:06 2024 -0500
+
+    join anytime
+
+[33mcommit cfd1af9bf079ccd7fcf2bb7566dd706c8ad984e8[m
+Author: Tina <tinazxia@gmail.com>
+Date:   Mon Nov 25 14:28:03 2024 -0500
+
+    save sessions, fixed transcription
+
+[33mcommit 43360fa1835f67d1e60b4030d8a97d68c9eada90[m
+Author: Tina <tinazxia@gmail.com>
+Date:   Mon Nov 25 13:56:45 2024 -0500
+
+    database v1
+
+[33mcommit a1b13d117c8fe34d1809ae58d3b85f7fdfc5a0bd[m
+Author: Tina <tinazxia@gmail.com>
+Date:   Mon Nov 25 09:19:59 2024 -0500
+
+    new features
+
+[33mcommit 72585c4a657089614c2d275f121f83a48403fada[m
+Author: Tina <tinazxia@gmail.com>
+Date:   Thu Nov 21 15:19:55 2024 -0500
+
+    ping
+
+[33mcommit b3ed4d75733b6df5026e90bb5567a3c7c181343a[m
+Author: Tina <79479823+tina9012@users.noreply.github.com>
+Date:   Thu Nov 21 09:57:26 2024 -0500
+
+    Create README.md
+
+[33mcommit 765726663141ef2d63c014472c1295fe4c637241[m
+Author: Tina <tinazxia@gmail.com>
+Date:   Wed Nov 20 16:25:06 2024 -0500
+
+    release 1
+
+[33mcommit 06ecf68286bb0254506c8f0af6876ca239d12e46[m
+Author: mtliou <164873773+mtliou@users.noreply.github.com>
+Date:   Fri Nov 15 11:26:34 2024 -0500
+
+    Update .env
+
+[33mcommit dfee4cc9c0009988137dfb5783ac08c8b2280f57[m
+Author: mtliou <tliouant_m@hotmail.com>
+Date:   Mon Nov 11 14:19:17 2024 -0500
+
+    Initial commit: Add all project files and configurations
+
+[33mcommit 82f238d72a58fdf9ed106a875fc96275ef54fbb2[m
+Author: mtliou <tliouant_m@hotmail.com>
+Date:   Thu Nov 7 15:50:56 2024 -0500
+
+    Initial commit for olivier7
+
+[33mcommit cdcbf3fc005e3716fe728452dd58ff6bca781e20[m
+Merge: 3705a88 7e3d09b
+Author: Daniil Sirbu <58617997+daniilsirbu@users.noreply.github.com>
+Date:   Thu Nov 7 14:12:18 2024 -0500
+
+    Merge pull request #1 from daniilsirbu/daniil
+    
+    added old button
+
+[33mcommit 7e3d09b7bdafb51e2d87400086040a0eb43ec516[m
+Author: Daniil Sirbu <sirbda1@yahoo.ca>
+Date:   Thu Nov 7 14:10:59 2024 -0500
+
+    added old button
+
+[33mcommit 3705a88da00970f979962ed58666a4b4c023926e[m
+Author: mtliou <tliouant_m@hotmail.com>
+Date:   Thu Nov 7 13:50:32 2024 -0500
+
+    Initial commit for olivier5
+
+[33mcommit 5e9a24be34d7559a6bde1af873df69e8d08f509a[m
+Author: mtliou <tliouant_m@hotmail.com>
+Date:   Thu Nov 7 04:13:07 2024 -0500
+
+    Initial commit
