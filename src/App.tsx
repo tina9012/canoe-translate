@@ -11,7 +11,7 @@ function App() {
         <Router>
             <Routes>
                 <Route path="/test" element={<LanguageDetectionPage />} />
-                <Route path="/" element={<SpeakerPage />} />
+                <Route path="/speaker/:sessionId" element={<SpeakerPage />} />
                 <Route path="/listen/:sessionId" element={<ListenerPage />} />
             </Routes>
         </Router>

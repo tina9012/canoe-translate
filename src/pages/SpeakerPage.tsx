@@ -3,7 +3,11 @@ import { v4 as uuidv4 } from "uuid";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
 import { QRCodeCanvas } from "qrcode.react";
 import MultiSelect from "../components/MultiSelect";
-import SingleSelect from "../components/SingleSelect";
+//import SingleSelect from "../components/SingleSelect";
+import QRCodeLink from "../components/QRCode";
+import { useSession } from "../components/SessionContext";
+import { useParams, useNavigate } from "react-router-dom";
+
 
 const speech_languages = [
   { code: "fr-CA", name: "French (Canadian)" },
@@ -34,7 +38,11 @@ const target_languages = [
 ];
 
 const SpeakerPage: React.FC = () => {
-  const [sessionId] = useState<string>(uuidv4());
+  //const [sessionId] = useState<string>(uuidv4());
+  const { sessionId } = useParams<{ sessionId: string }>(); // Extract sessionId from the route
+  const navigate = useNavigate();
+
+  
   const [transcription, setTranscription] = useState<string>("");
   const [fullTranscription, setFullTranscription] = useState<string>(""); // Full transcription to keep all speech
   const [translations, setTranslations] = useState<{ [key: string]: string }>({});
@@ -52,6 +60,20 @@ const SpeakerPage: React.FC = () => {
 
   const speechKey = import.meta.env.VITE_SPEECH_KEY || "YOUR_SPEECH_KEY";
   const serviceRegion = import.meta.env.VITE_SPEECH_REGION || "YOUR_SERVICE_REGION";
+
+  useEffect(() => {
+    if (!sessionId) {
+      generateNewSession();
+    }
+  }, [sessionId]);
+
+  const generateNewSession = () => {
+    const newSessionId = uuidv4();
+    navigate(`/speaker/${newSessionId}`, { replace: true });
+  };
+
+  // Listener URL with session ID
+
 
   const listenerUrl = `${window.location.origin}/listen/${sessionId}`;
 
@@ -174,7 +196,7 @@ const SpeakerPage: React.FC = () => {
         setTranslations(newTranslations);
         setFullTranscription((prevFullTranscription) => prevFullTranscription + "\n" + newTranscription);
         setFullTranslations(updatedFullTranslations);
-        sendUpdate({ transcription: newTranscription, translations: newTranslations, fullTranslations: updatedFullTranslations  });
+        sendUpdate({ transcription: newTranscription, translations: newTranslations, fullTranslations: updatedFullTranslations, isComplete: true });
 
 
       }
@@ -243,6 +265,10 @@ const SpeakerPage: React.FC = () => {
           {listenerUrl}
         </a>
       </div>
+
+      <button onClick={generateNewSession} style={{ marginTop: "20px" }}>
+        Generate New Session
+      </button>
 
       <div>
         <label>Select Audio Input Device:</label>

@@ -1,4 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
+import { useSession } from "../components/SessionContext";
+
 
 const languages = [
   { code: "en", name: "English" },
@@ -22,6 +25,118 @@ const ListenerPage: React.FC = () => {
   const [sessionStarted, setSessionStarted] = useState<boolean>(false);
   const [sessionId, setSessionId] = useState<string>("");
   const [fullTranslations, setFullTranslations] = useState<{ [key: string]: string }>({});
+  const [phraseCompleted, setPhraseCompleted] = useState<boolean>(false); // New state to track phrase completion
+  const [playbackCompleted, setPlaybackCompleted] = useState<boolean>(true); // New state to track phrase completion
+  const [audioQueue, setAudioQueue] = useState<Array<{ text: string; languageCode: string }>>([]);
+
+  const synthesizerRef = useRef<SpeechSDK.SpeechSynthesizer | null>(null);
+
+  const [speechKey] = useState<string>(import.meta.env.VITE_SPEECH_KEY || "YOUR_SPEECH_KEY");
+  const [serviceRegion] = useState<string>(import.meta.env.VITE_SPEECH_REGION || "YOUR_SERVICE_REGION");
+
+  const unlockAudioForMobile = () => {
+    const audio = new Audio("path/to/silent.mp3"); // Use your silent audio file
+    audio.play()
+        .then(() => {
+            console.log("Audio context unlocked.");
+        })
+        .catch((error) => {
+            console.error("Error unlocking audio context:", error);
+        });
+};
+
+useEffect(() => {
+    document.addEventListener("click", unlockAudioForMobile, { once: true });
+    return () => {
+        document.removeEventListener("click", unlockAudioForMobile);
+    };
+}, []);
+
+  useEffect(() => {
+    const processQueue = () => {
+      if (playbackCompleted && audioQueue.length > 0) {
+        const nextAudio = audioQueue[0];
+        if (nextAudio) {
+          playAudio(nextAudio.text, nextAudio.languageCode);
+          setAudioQueue((prevQueue) => prevQueue.slice(1)); // Remove the first item
+        }
+      }
+    };
+
+    processQueue();
+  }, [playbackCompleted, audioQueue]);
+
+  const playAudio = (text: string, languageCode: string) => {
+    if (!speechKey || !serviceRegion) {
+      console.error("Azure Speech SDK credentials are missing.");
+      return;
+    }
+
+    console.log(`Playing audio: ${text} in ${languageCode}`);
+    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(speechKey, serviceRegion);
+    const voiceName = getVoiceForLanguage(languageCode);
+    const player = new SpeechSDK.SpeakerAudioDestination();
+  
+    player.onAudioEnd = () => {
+      console.log("Audio playback completed.");
+      setPlaybackCompleted(true); // Signal that playback is completed
+    };
+
+    const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(player);
+
+    // Create a new synthesizer instance each time to ensure proper behavior
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig, audioConfig);
+  
+
+    const ssml = `
+      <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${languageCode}">
+        <voice name="${voiceName}">
+          <prosody rate="1.5">${text}</prosody>
+        </voice>
+      </speak>
+    `;
+
+    setPlaybackCompleted(false);
+
+    synthesizer.speakSsmlAsync(
+      ssml,
+      (result) => {
+        if (result.reason === SpeechSDK.ResultReason.SynthesizingAudioCompleted) {
+          console.log("Speech synthesis completed.");
+        } else {
+          console.error("Speech synthesis failed:", result.errorDetails);
+        }
+        synthesizer.close();
+      },
+      (error) => {
+        console.error("Error during speech synthesis:", error);
+        synthesizer.close();
+      }
+    );
+    };
+
+  const enqueueAudio = (text: string, languageCode: string) => {
+    setAudioQueue((prevQueue) => [...prevQueue, { text, languageCode }]);
+  };
+
+  const getVoiceForLanguage = (languageCode: string): string => {
+    const voiceMap: { [key: string]: string } = {
+      en: "en-US-JennyNeural",
+      fr: "fr-FR-DeniseNeural",
+      es: "es-ES-ElviraNeural",
+      de: "de-DE-KatjaNeural",
+      it: "it-IT-ElsaNeural",
+      zh: "zh-CN-XiaoxiaoNeural",
+      ja: "ja-JP-KeitaNeural",
+      ko: "ko-KR-SunHiNeural",
+      ar: "ar-SA-ZariyahNeural",
+      pt: "pt-PT-FernandaNeural",
+      ru: "ru-RU-SvetlanaNeural",
+    };
+
+    return voiceMap[languageCode] || "en-US-JennyNeural";
+  };
+
 
   useEffect(() => {
     const currentSessionId = window.location.pathname.split("/").pop() || "";
@@ -71,6 +186,16 @@ const ListenerPage: React.FC = () => {
               return updatedFullTranslations;
             });
           }
+
+          if (data.isComplete) {
+            setPhraseCompleted(true);
+            if (data.translations && data.translations[selectedLanguage]) {
+              enqueueAudio(data.translations[selectedLanguage], selectedLanguage);
+            }
+          } else {
+            setPhraseCompleted(false);
+          }
+
         }
       } catch (error) {
         console.error("Error parsing WebSocket message:", error);
@@ -97,7 +222,7 @@ const ListenerPage: React.FC = () => {
       clearInterval(pingInterval);
       ws.close();
     };
-  }, [sessionId]);
+  }, [sessionId, selectedLanguage]);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedLanguage(e.target.value);
@@ -121,12 +246,7 @@ const ListenerPage: React.FC = () => {
     <div style={{ textAlign: "center", marginTop: "50px" }}>
       <h1 className="page-title">Listener Page</h1>
       <p>Joining session ID: {sessionId}</p>
-      {!sessionStarted ? (
-        <p>
-          Awaiting speaker to begin session...
-          You may not join a session that has already begun.
-        </p>
-      ) : (
+
         <>
           <h2>Available Languages</h2>
           <select value={selectedLanguage} onChange={handleLanguageChange}>
@@ -138,7 +258,7 @@ const ListenerPage: React.FC = () => {
             ))}
           </select>
 
-<div className="container">
+      <div className="container">
         <h2>Transcription</h2>
         <div className="scrollable-box">{receivedTranscription || "Waiting for transcription..."}</div>
       </div>
@@ -157,10 +277,11 @@ const ListenerPage: React.FC = () => {
         <div className="scrollable-box">{fullTranslatedText}</div>
       </div>
 
+      <button>Enable Audio Playback</button>
+
       {/* Download Button */}
       <button onClick={handleDownload}>Download Full Translated Text</button>
     </>
-  )}
     </div>
   );
 };
