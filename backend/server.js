@@ -1,177 +1,194 @@
-import { WebSocketServer, WebSocket } from "ws";
-import sqlite3 from "sqlite3";
+import { WebSocketServer } from "ws";
+import mysql from "mysql2/promise";
 import express from "express";
 import cors from "cors";
+import http from "http";
 
-const db = new sqlite3.Database("./history.db");
-const wss = new WebSocketServer({ port: 8080 });
+import dotenv from "dotenv";
+dotenv.config();
+
+const PORT = process.env.PORT || 3000;
+
+// Initialize Express app
 const app = express();
 
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS sessions (
-            session_id TEXT PRIMARY KEY,
-            languages TEXT,
-            full_translations TEXT
-        )
-    `, (err) => {
-        if (err) {
-            console.error("Error initializing database:", err.message);
-        } else {
-            console.log("Database initialized successfully");
-        }
-    });
-});
-
-
-wss.on("connection", (ws) => {
-    console.log("New WebSocket connection established");
-  
-    ws.on("message", (message) => {
-      try {
-        const parsedMessage = JSON.parse(message.toString());
-        const { sessionId, fullTranslations } = parsedMessage;
-  
-        console.log("Parsed WebSocket message:", parsedMessage);
-  
-        if (sessionId && fullTranslations) {
-          // Fetch the existing translations from the database
-          db.get(
-            "SELECT full_translations FROM sessions WHERE session_id = ?",
-            [sessionId],
-            (err, row) => {
-              if (err) {
-                console.error("Error fetching session:", err.message);
-                return;
-              }
-  
-              let existingTranslations = {};
-              if (row && row.full_translations) {
-                try {
-                  existingTranslations = JSON.parse(row.full_translations);
-                } catch (parseError) {
-                  console.error("Error parsing existing translations:", parseError);
-                }
-              }
-  
-              // Append the new translations to the existing ones
-              const updatedTranslations = { ...existingTranslations };
-              for (const lang in fullTranslations) {
-                const newTranslation = fullTranslations[lang];
-                updatedTranslations[lang] =
-                  (updatedTranslations[lang] || "") + "\n" + newTranslation;
-              }
-  
-              // Save the updated translations back to the database
-              db.run(
-                `
-                INSERT OR REPLACE INTO sessions (session_id, languages, full_translations)
-                VALUES (?, ?, ?)
-                `,
-                [
-                  sessionId,
-                  JSON.stringify(parsedMessage.languages || []),
-                  JSON.stringify(updatedTranslations),
-                ],
-                (err) => {
-                  if (err) {
-                    console.error("Error saving session:", err.message);
-                  } else {
-                    console.log(`Session updated successfully for sessionId=${sessionId}`);
-                  }
-                }
-              );
-            }
-          );
-        }
-  
-        // Broadcast the message to all connected clients
-        wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(parsedMessage));
-          }
-        });
-      } catch (error) {
-        console.error("Error parsing WebSocket message:", error);
-      }
-    });
-  
-    ws.on("close", () => {
-      console.log("WebSocket connection closed");
-    });
-  
-    ws.on("error", (error) => {
-      console.error("WebSocket error:", error);
-    });
-  });
-  
-
+// Middleware
 app.use(express.json());
-
 app.use(
-    cors({
-        origin: "http://localhost:5173", // Allow only your frontend origin
-    })
+  cors({
+    origin: "http://localhost:5173", // Update this for your frontend
+  })
 );
 
-app.post("/api/create-session", (req, res) => {
-    const { sessionId } = req.body;
-  
-    if (!sessionId) {
-      return res.status(400).json({ error: "Missing sessionId" });
-    }
-  
-    db.run(
-      `
-      INSERT OR REPLACE INTO sessions (session_id, languages, full_translations)
-      VALUES (?, ?, ?)
-      `,
-      [sessionId, JSON.stringify([]), JSON.stringify({})],
-      (err) => {
-        if (err) {
-          console.error("Error creating session:", err.message);
-          return res.status(500).json({ error: "Database error: " + err.message });
-        }
-        console.log(`Session created: ${sessionId}`);
-        return res.status(201).json({ message: "Session created successfully" });
-      }
-    );
-  });
-  
-  
-
-// Endpoint to fetch session data
-app.get("/api/session-data", (req, res) => {
-    const { sessionId } = req.query;
-  
-    if (!sessionId) {
-      return res.status(400).json({ error: "Missing sessionId" });
-    }
-  
-    db.get(
-      "SELECT languages, full_translations FROM sessions WHERE session_id = ?",
-      [sessionId],
-      (err, row) => {
-        if (err) {
-          return res.status(500).json({ error: "Database error: " + err.message });
-        }
-        if (!row) {
-          return res.status(404).json({ error: "Session not found" });
-        }
-  
-        return res.json({
-          languages: JSON.parse(row.languages || "[]"),
-          fullTranslations: JSON.parse(row.full_translations || "{}"),
-        });
-      }
-    );
-  });
-  
-
-
-// Start HTTP server
-app.listen(3000, () => {
-    console.log("HTTP server running on http://localhost:3000");
+// Configure MySQL connection pool
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  connectTimeout: 30000,
 });
 
-console.log("WebSocket server running on wss://websocket-server-549270727339.us-central1.run.app");
+
+
+// Ensure the table exists
+async function initializeDatabase() {
+  try {
+    console.log("Attempting to connect to the database...");
+
+    // Establish a connection from the connection pool
+    const connection = await pool.getConnection();
+    console.log("Database connection established successfully.");
+
+    // Run the query to create the table if it doesn't exist
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        session_id VARCHAR(255) PRIMARY KEY,
+        languages TEXT,
+        full_translations TEXT
+      )
+    `);
+    console.log("Sessions table created or already exists.");
+
+    // Release the connection back to the pool
+    connection.release();
+    console.log("Connection released back to the pool.");
+  } catch (err) {
+    console.error("Error initializing database:", err.message);
+    console.error("Error stack trace:", err.stack);
+    process.exit(1); // Exit the process if database initialization fails
+  }
+}
+
+
+// API Routes
+app.post("/api/create-session", async (req, res) => {
+  const { sessionId } = req.body;
+
+  if (!sessionId) {
+    return res.status(400).json({ error: "Missing sessionId" });
+  }
+
+  try {
+    const [result] = await pool.query(
+      `INSERT INTO sessions (session_id, languages, full_translations) VALUES (?, ?, ?)`,
+      [sessionId, JSON.stringify([]), JSON.stringify({})]
+    );
+    console.log(`Session created: ${sessionId}`);
+    res.status(201).json({ message: "Session created successfully" });
+  } catch (err) {
+    console.error("Error creating session:", err.message);
+    res.status(500).json({ error: "Database error: " + err.message });
+  }
+});
+
+app.get("/api/session-data", async (req, res) => {
+  const { sessionId } = req.query;
+
+  if (!sessionId) {
+    return res.status(400).json({ error: "Missing sessionId" });
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT languages, full_translations FROM sessions WHERE session_id = ?`,
+      [sessionId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const { languages, full_translations } = rows[0];
+    res.json({
+      languages: JSON.parse(languages || "[]"),
+      fullTranslations: JSON.parse(full_translations || "{}"),
+    });
+  } catch (err) {
+    console.error("Error fetching session data:", err.message);
+    res.status(500).json({ error: "Database error: " + err.message });
+  }
+});
+
+// Create a shared HTTP server
+const server = http.createServer(app);
+
+// Attach WebSocket server to the HTTP server
+const wss = new WebSocketServer({ server });
+
+wss.on("connection", (ws) => {
+  console.log("New WebSocket connection established");
+
+  ws.on("message", async (message) => {
+    try {
+      const parsedMessage = JSON.parse(message.toString());
+      const { sessionId, fullTranslations } = parsedMessage;
+
+      console.log("Parsed WebSocket message:", parsedMessage);
+
+      if (sessionId && fullTranslations) {
+        const [rows] = await pool.query(
+          `SELECT full_translations FROM sessions WHERE session_id = ?`,
+          [sessionId]
+        );
+
+        let existingTranslations = {};
+        if (rows.length > 0 && rows[0].full_translations) {
+          try {
+            existingTranslations = JSON.parse(rows[0].full_translations);
+          } catch (err) {
+            console.error("Error parsing existing translations:", err);
+          }
+        }
+
+        const updatedTranslations = { ...existingTranslations };
+        for (const lang in fullTranslations) {
+          const newTranslation = fullTranslations[lang];
+          updatedTranslations[lang] =
+            (updatedTranslations[lang] || "") + "\n" + newTranslation;
+        }
+
+        await pool.query(
+          `
+          INSERT INTO sessions (session_id, languages, full_translations)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+          languages = VALUES(languages),
+          full_translations = VALUES(full_translations)
+          `,
+          [
+            sessionId,
+            JSON.stringify(parsedMessage.languages || []),
+            JSON.stringify(updatedTranslations),
+          ]
+        );
+
+        console.log(`Session updated successfully for sessionId=${sessionId}`);
+      }
+
+      // Broadcast the message to all connected clients
+      wss.clients.forEach((client) => {
+        if (client !== ws && client.readyState === ws.OPEN) {
+          client.send(JSON.stringify(parsedMessage));
+        }
+      });
+    } catch (err) {
+      console.error("Error processing WebSocket message:", err);
+    }
+  });
+
+  ws.on("close", () => {
+    console.log("WebSocket connection closed");
+  });
+
+  ws.on("error", (error) => {
+    console.error("WebSocket error:", error);
+  });
+});
+
+// Start the server and initialize the database
+initializeDatabase();
+
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
