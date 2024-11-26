@@ -7,7 +7,7 @@ import http from "http";
 import dotenv from "dotenv";
 dotenv.config();
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // Initialize Express app
 const app = express();
@@ -16,7 +16,7 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: "http://localhost:5173", // Update this for your frontend
+    origin: "https://iridescent-brioche-989769.netlify.app", 
   })
 );
 
@@ -114,7 +114,9 @@ app.get("/api/session-data", async (req, res) => {
 const server = http.createServer(app);
 
 // Attach WebSocket server to the HTTP server
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, 
+  maxPayload: 1048576,
+});
 
 wss.on("connection", (ws) => {
   console.log("New WebSocket connection established");
@@ -122,6 +124,13 @@ wss.on("connection", (ws) => {
   ws.on("message", async (message) => {
     try {
       const parsedMessage = JSON.parse(message.toString());
+
+      if (parsedMessage.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong" }));
+        console.log("Received ping, keeping connection alive.");
+        return;
+      }
+
       const { sessionId, fullTranslations } = parsedMessage;
 
       console.log("Parsed WebSocket message:", parsedMessage);

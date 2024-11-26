@@ -149,7 +149,8 @@ const ListenerPage: React.FC = () => {
 
     const fetchSessionData = async () => {
       try {
-          const response = await fetch(`http://localhost:3000/api/session-data?sessionId=${sessionId}`);
+          //const response = await fetch(`http://localhost:8080/api/session-data?sessionId=${sessionId}`);
+          const response = await fetch(`https://backend-app-1015371839961.us-central1.run.app/api/session-data?sessionId=${sessionId}`);
           const contentType = response.headers.get("content-type");
           if (!contentType || !contentType.includes("application/json")) {
               throw new Error("Response is not JSON");
@@ -174,7 +175,8 @@ const ListenerPage: React.FC = () => {
       ws.current.close();
     }
 
-    const newWs = new WebSocket("ws://localhost:8080");
+    //const newWs = new WebSocket("ws://localhost:8080");
+    const newWs = new WebSocket("wss://backend-app-1015371839961.us-central1.run.app");
 
     newWs.onopen = () => {
       console.log("WebSocket connection established.");
@@ -209,7 +211,8 @@ const ListenerPage: React.FC = () => {
           
               for (const lang in data.fullTranslations) {
                 const newTranslation = data.fullTranslations[lang];
-                if (newTranslation && !updatedFullTranslations[lang]?.endsWith(newTranslation)) {
+                //if (newTranslation && !updatedFullTranslations[lang]?.endsWith(newTranslation)) {
+                if (newTranslation) {
                   updatedFullTranslations[lang] =
                     (updatedFullTranslations[lang] || "") + "\n" + newTranslation;
                 }
@@ -245,6 +248,10 @@ const ListenerPage: React.FC = () => {
 
   newWs.onclose = () => {
     console.log("WebSocket connection closed.");
+    setTimeout(() => {
+      console.log("Reconnecting WebSocket...");
+      initializeWebSocket(); // Re-initialize WebSocket connection
+    }, 5000);
     if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
   };
 
@@ -271,8 +278,6 @@ useEffect(() => {
 const handleReconnectWebSocket = () => {
   initializeWebSocket();
 };
-
-
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedLanguage(e.target.value);

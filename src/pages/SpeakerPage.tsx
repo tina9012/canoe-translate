@@ -72,7 +72,8 @@ const SpeakerPage: React.FC = () => {
   
     try {
       console.log("Creating new session:", newSessionId);
-      const response = await fetch("http://localhost:3000/api/create-session", {
+      //const response = await fetch("http://localhost:8080/api/create-session", {
+      const response = await fetch("https://backend-app-1015371839961.us-central1.run.app/api/create-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: newSessionId }),
@@ -116,31 +117,57 @@ const SpeakerPage: React.FC = () => {
     fetchAudioInputDevices();
   }, []);
 
+
+
   useEffect(() => {
-    //ws.current = new WebSocket("wss://websocket-server-549270727339.us-central1.run.app");
-    ws.current = new WebSocket("ws://localhost:8080");
+    //ws.current = new WebSocket("ws://localhost:8080");
 
-    ws.current.onopen = () => {
-      console.log("WebSocket connection established.");
+    const initializeWebSocket = () => {
+
+      if (ws.current) {
+        ws.current.close(); // Close any existing WebSocket connection
+      }
+
+      const newWs = new WebSocket("wss://backend-app-1015371839961.us-central1.run.app");
+
+      newWs.onopen = () => {
+        console.log("WebSocket connection established.");
+        // Perform any other logic on open, e.g., updating state, sending initial messages
+      };
+
+      newWs.onerror = (error) => {
+        console.error("WebSocket error:", error);
+      };
+
+      newWs.onclose = () => {
+        console.log("WebSocket connection closed.");
+        // Automatically try to reconnect after 5 seconds if closed
+        setTimeout(() => {
+          console.log("Reconnecting WebSocket...");
+          initializeWebSocket(); // Re-initialize WebSocket connection
+        }, 5000);
+      };
+
+      ws.current = newWs; // Set the new WebSocket instance to the ref
+  
+
     };
 
-    ws.current.onclose = () => {
-      console.log("WebSocket connection closed.");
-    };
+    initializeWebSocket();
 
-    ws.current.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
+    // Ping the WebSocket every 30 seconds to keep the connection alive
     const pingInterval = setInterval(() => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         ws.current.send(JSON.stringify({ type: "ping" }));
       }
-    }, 30000); 
-
+    }, 30000);
+  
+    // Cleanup on component unmount: clear the ping interval and close the WebSocket
     return () => {
-      clearInterval(pingInterval);
-      ws.current?.close(); // Clean up WebSocket on component unmount
+      clearInterval(pingInterval); // Stop the pinging when the component unmounts
+      if (ws.current) {
+        ws.current.close(); // Close WebSocket connection when component unmounts
+      }
     };
   }, []);
 
